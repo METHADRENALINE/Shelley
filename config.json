@@ -21,6 +21,44 @@
   "state_path": "data/state.json",
   "recovery_log_path": "data/recovery-controls.jsonl",
   "recovery_log_retention_days": 365,
+  "points": {
+    "enabled": true,
+    "log_events": false,
+    "state_path": "data/points.json",
+    "text": {
+      "enabled": true,
+      "channel_ids": [
+        0
+      ],
+      "excluded_channel_ids": [],
+      "interval_seconds": 120,
+      "poll_seconds": 15,
+      "poll_limit": 25,
+      "poll_initial_lookback_seconds": 3600,
+      "award_min": 10,
+      "award_max": 20
+    },
+    "voice": {
+      "enabled": true,
+      "channel_ids": [
+        0
+      ],
+      "excluded_channel_ids": [],
+      "interval_seconds": 120,
+      "active_microphone_seconds": 3,
+      "check_seconds": 1,
+      "award_min": 10,
+      "award_max": 20
+    },
+    "leaderboard": {
+      "enabled": true,
+      "channel_id": 0,
+      "update_seconds": 5,
+      "limit": 10,
+      "text_color": 5793266,
+      "voice_color": 5763719
+    }
+  },
   "servers": [
     {
       "kind": "minecraft",
