@@ -1,0 +1,25 @@
+[project]
+name = "shelley-discord-bot"
+version = "0.1.0"
+description = "Shelley, a Discord bot developed specifically for the private METHADRENALINE community."
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+license = { text = "BSD-3-Clause" }
+authors = [{ name = "METHADRENALINE" }]
+dependencies = [
+  "discord.py>=2.5,<3",
+  "mcstatus>=13,<14",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8,<9",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
