@@ -1,0 +1,86 @@
+{
+  "client_id": 0,
+  "token": "replace-with-your-discord-bot-token",
+  "dev_guild_id": 0,
+  "notify_channel_id": 0,
+  "welcome_channel_id": 0,
+  "status_channel_id": 0,
+  "welcome_message_path": "templates/welcome-msg.json",
+  "welcome_update_seconds": 5,
+  "star_forward": {
+    "enabled": true,
+    "source_channel_ids": [
+      0
+    ],
+    "target_channel_id": 0,
+    "emoji": "\u2b50",
+    "threshold": 3
+  },
+  "update_seconds": 30,
+  "timeout_seconds": 3,
+  "state_path": "data/state.json",
+  "servers": [
+    {
+      "kind": "minecraft",
+      "address": "ip:port",
+      "placeholder": "SMP_STATUS",
+      "components": [
+        {
+          "label": "Lobby",
+          "address": "ip:port",
+          "tmux_session": "lobby"
+        },
+        {
+          "label": "SMP",
+          "address": "ip:port",
+          "tmux_session": "survival"
+        },
+        {
+          "label": "Creative",
+          "address": "ip:port",
+          "tmux_session": "creative"
+        }
+      ]
+    },
+    {
+      "kind": "minecraft",
+      "address": "ip:port",
+      "placeholder": "MODDED_STATUS"
+    }
+  ],
+  "remote_targets": {
+    "bm": {
+      "host": "host-or-ip",
+      "user": "server-user",
+      "key_path": "~/.ssh/shelley_bm",
+      "connect_timeout": 10,
+      "command_timeout": 30,
+      "start_command": "/usr/local/bin/bm-safe-start",
+      "reboot_command": "/usr/local/sbin/bm-safe-reboot",
+      "status_placeholder": "MODDED_STATUS",
+      "starting_ttl_seconds": 600
+    }
+  },
+  "status_messages": [
+    {
+      "key": "smp",
+      "type": "embed",
+      "renderer": "smp_cluster",
+      "template_path": "templates/status-smp-creative.json",
+      "status_placeholder": "SMP_STATUS"
+    },
+    {
+      "key": "smp_interval",
+      "type": "separator",
+      "content": "\u2800\n\u2800"
+    },
+    {
+      "key": "bm",
+      "type": "embed",
+      "renderer": "bm",
+      "template_path": "templates/status-bm.json",
+      "control_target": "bm",
+      "status_placeholder": "MODDED_STATUS"
+    }
+  ]
+}
