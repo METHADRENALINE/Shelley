@@ -40,8 +40,6 @@ Shelley includes a small admin notification command. An administrator can send t
 
 ## Status icons
 
-Shelley uses a few simple icons to show the current state of a game server.
-
 🟢 means the server is online and responding normally. Players can join, and Shelley can show the current player count.
 
 🟡 means the server is not fully available yet. It may be starting, stuck during startup, unstable connection, or only partly reachable.
