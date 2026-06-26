@@ -79,6 +79,14 @@ def test_config_uses_safe_placeholders_for_servers() -> None:
     assert cfg.get("token") == "replace-with-your-discord-bot-token"
     assert cfg.get("recovery_log_path") == "data/recovery-controls.jsonl"
     assert cfg.get("recovery_log_retention_days") == 365
+    assert cfg.get("points", {}).get("state_path") == "data/points.json"
+    assert cfg["points"]["text"]["channel_ids"] == [0]
+    assert cfg["points"]["text"]["excluded_channel_ids"] == []
+    assert cfg["points"]["voice"]["channel_ids"] == [0]
+    assert cfg["points"]["voice"]["excluded_channel_ids"] == []
+    assert cfg["points"]["voice"]["active_microphone_seconds"] == 3
+    assert cfg["points"]["voice"]["interval_seconds"] == 120
+    assert cfg["points"]["leaderboard"]["channel_id"] == 0
 
     for server in cfg["servers"]:
         assert server.get("kind") == "minecraft"
@@ -89,6 +97,21 @@ def test_config_uses_safe_placeholders_for_servers() -> None:
     for target in cfg["remote_targets"].values():
         assert target.get("host") == "host-or-ip"
         assert target.get("user") == "server-user"
+
+
+def test_points_logic_has_current_voice_and_leaderboard_rules() -> None:
+    source = (ROOT / "shelley/cogs/points.py").read_text(encoding="utf-8")
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+
+    assert "Pillow>=10,<12" in pyproject
+    assert "def render_points_leaderboard_png" in source
+    assert "fetch_user(" not in source
+    assert "Обновляется автоматически" not in source
+    assert "self_deaf" in source
+    assert "deaf" in source
+    assert "len(eligible_members) < 2" in source
+    assert (ROOT / "assets/text-point.png").is_file()
+    assert (ROOT / "assets/voice-points.png").is_file()
 
 
 def test_runtime_private_files_are_not_committed() -> None:

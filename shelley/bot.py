@@ -5,6 +5,7 @@ from .settings import config_path, env_name, load_json
 
 INITIAL_EXTENSIONS = (
     "shelley.cogs.admin",
+    "shelley.cogs.points",
     "shelley.cogs.star_forward",
     "shelley.cogs.status",
     "shelley.cogs.welcome",
@@ -17,6 +18,7 @@ class ShelleyBot(commands.Bot):
         intents.messages = True
         intents.reactions = True
         intents.message_content = True
+        intents.voice_states = True
 
         options = {}
         if application_id:
