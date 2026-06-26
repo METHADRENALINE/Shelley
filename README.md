@@ -28,7 +28,7 @@ When the template changes, Shelley updates the Discord message. If the message w
 
 The current public template describes the private community, its loose rules, the star channel, seasonal community notes, and the general tone of the server. Shelley does not manage every community system mentioned there. In this codebase, its job is to publish and keep that guide synchronized.
 
-## Star messages
+# Star messages
 
 Shelley watches selected chat channels for ⭐ reactions. When a message gets 3 stars from members (bot reactions don’t count heh), Shelley copies it to the star channel, keeping memorable community moments separate from regular pinned messages.
 
