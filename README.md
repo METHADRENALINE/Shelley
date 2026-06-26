@@ -10,7 +10,7 @@ You can actually see some parts of our Discord server here, like the welcome mes
 
 One thing will always stay private, you’ll never know the full community lineup or real details about its members unless you’ve actually been with us :)
 
-## What Shelley does for the server
+# What Shelley does for the server
 
 Shelley takes care of star messages, our small community archive for moments people don’t want to lose.
 
@@ -28,7 +28,7 @@ When the template changes, Shelley updates the Discord message. If the message w
 
 The current public template describes the private community, its loose rules, the star channel, seasonal community notes, and the general tone of the server. Shelley does not manage every community system mentioned there. In this codebase, its job is to publish and keep that guide synchronized.
 
-# Star messages
+## Star messages
 
 Shelley watches selected chat channels for ⭐ reactions. When a message gets 3 stars from members (bot reactions don’t count heh), Shelley copies it to the star channel, keeping memorable community moments separate from regular pinned messages.
 
