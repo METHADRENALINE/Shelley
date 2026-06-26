@@ -38,7 +38,7 @@ In practice, star messages work like a community archive. Members decide what de
 
 Shelley includes a small admin notification command. An administrator can send text to the configured notification channel and attach files. Technically, it doesn’t really make sense, ik that, it does give the server some personality though.
 
-## Status icons
+## Game servers status icons
 
 🟢 means the server is online and responding normally. Players can join, and Shelley can show the current player count.
 
