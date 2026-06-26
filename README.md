@@ -1,26 +1,59 @@
 # Shelley
 
-Shelley is a Discord bot developed specifically for the private METHADRENALINE community.
+Discord bot made for the METHADRENALINE ᵍʳᵒᵘᵖ server. It exists to keep the community Discord tidy, useful, and a little more alive while staying close to how the group actually plays and talks.
 
-This repository is published for source review and development transparency. It is not a product for third-party Discord servers, and it is not intended to be installed, configured, or operated by outside communities.
+It is a personal community bot, not a packaged product and not a ready setup for other communities. The code is shaped around METHADRENALINE ᵍʳᵒᵘᵖ private community, its Discord channels, and its game server habits. Changes are made when the community needs them, not to support every possible Discord server.
 
-## Scope
+You can review it, learn from it, or adapt ideas from it and ofc you can do whatever you want with the code and modify it to fit your own needs. :D
 
-The code shows the logic behind Shelley: Minecraft server status rendering, welcome-message synchronization, star-forwarding, and private server controls used inside the community.
+You can actually see some parts of our Discord server here, like the welcome message, our game servers, and stuff like that.
 
-Deployment-specific material is intentionally excluded. The repository uses a safe configuration and placeholder message templates instead of real Discord tokens, SSH keys, passwords, private hostnames, runtime state, or infrastructure details.
+One thing will always stay private, you’ll never know the full community lineup or real details about its members unless you’ve actually been with us :)
 
-All runtime settings are represented in `config.json`: Discord application/client ID, the bot token placeholder, channel IDs, Minecraft server targets, BM SSH settings, status messages, and state paths.
+## What Shelley does for the server
 
-## Structure
+Shelley takes care of Star Messages, our small community archive for moments people don’t want to lose. When a message gets 3 star reactions from members, Shelley sends it to a dedicated star channel above the main chats. This keeps funny, useful, or important community moments visible without turning them into regular pinned messages. If the message later drops below 3 stars, Shelley removes it from that channel too.
 
-The Python code is split by responsibility:
+Shelley keeps the game server info in one place. Members can open the status channel and see whether the configured servers are online, starting, partly available, or offline. The status cards also show the connection info, game version, player count, and download links for a modpack when that server has them in its template.
 
-- `shelley/cogs/` extension modules.
-- `shelley/services/` external service integrations.
-- `shelley/renderers/` message rendering logic.
-- `shelley/views/` discord UI components.
-- `templates/` placeholder message templates.
-- `config.json` safe bot configuration.
+For the SMP&Creative setup, Shelley treats the network as a small group of connected servers. It shows the shared status first, then the separate state of Lobby, SMP, and Creative. That makes it clear whether the whole network is fine or only one part needs attention.
 
-Real private `config.*.json`, runtime state files, SSH keys, passwords, tokens, and private infrastructure values must stay outside the repository.
+For the modded Minecraft server, like Magicway or Bizarre Machinery, Shelley shows a separate status card. When the server is online, the card stays focused on info for players. When the server is offline or still starting, Shelley adds recovery controls directly under the status message.
+
+## Welcome guide
+
+Shelley keeps a single welcome message in the configured welcome channel. The message is built from a JSON template, so the actual text and embeds can be edited without changing the bot code.
+
+When the template changes, Shelley updates the Discord message. If the message was deleted, Shelley recreates it.
+
+The current public template describes the private community, its loose rules, the star channel, seasonal community notes, and the general tone of the server. Shelley does not manage every community system mentioned there. In this codebase, its job is to publish and keep that guide synchronized.
+
+## Star messages
+
+Shelley watches selected chat channels for ⭐ reactions. When a message gets 3 stars from members (bot reactions don’t count heh), Shelley copies it to the star channel, keeping memorable community moments separate from regular pinned messages.
+
+If the message later drops below the required number of stars, or if the original message is deleted, Shelley removes the saved copy from the star channel too.
+
+In practice, star messages work like a community archive. Members decide what deserves to stay visible, Shelley just handles the boring part in the background.
+
+## Announcements
+
+Shelley includes a small admin notification command. An administrator can send text to the configured notification channel and attach files. Technically, it doesn’t really make sense, ik that, it does give the server some personality though.
+
+## Status icons
+
+Shelley uses a few simple icons to show the current state of a game server.
+
+🟢 means the server is online and responding normally. Players can join, and Shelley can show the current player count.
+
+🟡 means the server is not fully available yet. It may be starting, stuck during startup, unstable connection, or only partly reachable.
+
+🔴 means the server is offline or not responding. If recovery controls are enabled, Shelley can show emergency buttons for starting or restarting the server.
+
+## Game servers recovery controls
+
+Recovery buttons for the emergency case where a configured game server has stopped and players simply want to bring it back without calling an admin.
+
+When the server is offline, Shelley can show a Start button. When the server is offline or marked as starting, it can show Restart system button. These controls are only for unplanned outages.
+
+Admins also have slash commands for the same kind of remote action. Those commands are restricted to users with administrator permission.
