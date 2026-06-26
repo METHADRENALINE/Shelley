@@ -14,4 +14,5 @@ class ServerCfg:
     placeholder: str
     kind: str = "minecraft"
     address: Optional[str] = None
+    version_edition_override: Optional[str] = None
     components: List[ServerComponentCfg] = field(default_factory=list)

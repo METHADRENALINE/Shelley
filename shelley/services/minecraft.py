@@ -1,21 +1,88 @@
 import asyncio
-from typing import List, Optional
+import re
+from typing import Any, Iterable, List, Optional
 
 from mcstatus import BedrockServer, JavaServer
 
 from ..models import ServerCfg, ServerComponentCfg
 
+JAVA_MODLOADERS = (
+    ("neoforge", "NeoForge"),
+    ("minecraftforge", "Forge"),
+    ("forge", "Forge"),
+    ("fabricloader", "Fabric"),
+    ("fabric", "Fabric"),
+    ("quilt_loader", "Quilt"),
+    ("quilt", "Quilt"),
+)
+
+
+def iter_status_strings(value: Any) -> Iterable[str]:
+    if value is None:
+        return
+
+    if isinstance(value, str):
+        yield value
+        return
+
+    if isinstance(value, dict):
+        for item in value.values():
+            yield from iter_status_strings(item)
+        return
+
+    if isinstance(value, (list, tuple, set)):
+        for item in value:
+            yield from iter_status_strings(item)
+        return
+
+    if hasattr(value, "__dict__"):
+        yield from iter_status_strings(vars(value))
+
+
+def detect_java_modloader(status: Any) -> Optional[str]:
+    candidates: list[str] = []
+
+    version = getattr(getattr(status, "version", None), "name", None)
+    if version:
+        candidates.append(str(version))
+
+    as_dict = getattr(status, "as_dict", None)
+    if callable(as_dict):
+        try:
+            candidates.extend(iter_status_strings(as_dict()))
+        except Exception:
+            pass
+
+    candidates.extend(iter_status_strings(getattr(status, "forge_data", None)))
+    candidates.extend(iter_status_strings(getattr(status, "raw", None)))
+
+    haystack = "\n".join(candidates).lower()
+    for needle, label in JAVA_MODLOADERS:
+        if needle in haystack:
+            return label
+
+    return None
+
+
 def status_version_label(edition: str, version_name: object) -> str:
     version = str(version_name or "").strip()
+    velocity_match = re.match(r"^Velocity\s+\S+-(?P<minecraft_version>.+)$", version, re.IGNORECASE)
+    if velocity_match:
+        version = velocity_match.group("minecraft_version").strip()
     return f"{edition} {version}".strip()
 
-async def minecraft_java_status(address: str, timeout: float) -> tuple[bool, Optional[int], Optional[str]]:
+async def minecraft_java_status(
+    address: str,
+    timeout: float,
+    edition_override: Optional[str] = None,
+) -> tuple[bool, Optional[int], Optional[str]]:
     try:
         server = await JavaServer.async_lookup(address, timeout=timeout)
         st = await server.async_status()
         online = getattr(st.players, "online", None)
         version = getattr(getattr(st, "version", None), "name", None)
-        return True, int(online) if online is not None else None, status_version_label("Java Edition", version)
+        edition = str(edition_override or "").strip() or detect_java_modloader(st) or "Java Edition"
+        return True, int(online) if online is not None else None, status_version_label(edition, version)
     except Exception:
         return False, None, None
 
@@ -35,7 +102,7 @@ async def probe_server(server: "ServerCfg", timeout: float) -> tuple[bool, Optio
     if kind in ("minecraft_java", "minecraft_java_cluster"):
         if not server.address:
             return False, None, None
-        return await minecraft_java_status(server.address, timeout)
+        return await minecraft_java_status(server.address, timeout, server.version_edition_override)
 
     if kind in ("minecraft_bedrock", "minecraft_bedrock_cluster"):
         if not server.address:
@@ -46,7 +113,11 @@ async def probe_server(server: "ServerCfg", timeout: float) -> tuple[bool, Optio
         if not server.address:
             return False, None, None
 
-        java_online, java_players, java_version = await minecraft_java_status(server.address, timeout)
+        java_online, java_players, java_version = await minecraft_java_status(
+            server.address,
+            timeout,
+            server.version_edition_override,
+        )
         if java_online:
             return java_online, java_players, java_version
         return await minecraft_bedrock_status(server.address, timeout)

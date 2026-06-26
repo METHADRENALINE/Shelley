@@ -39,6 +39,7 @@ class StatusCog(commands.Cog):
                 placeholder=s["placeholder"],
                 kind=s.get("kind", "minecraft"),
                 address=s.get("address"),
+                version_edition_override=s.get("version_edition_override"),
                 components=[
                     ServerComponentCfg(
                         label=component["label"],

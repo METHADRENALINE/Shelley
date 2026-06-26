@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import re
+import time
 from pathlib import Path
 
 
@@ -75,6 +77,8 @@ def test_config_uses_safe_placeholders_for_servers() -> None:
 
     assert cfg.get("client_id") == 0
     assert cfg.get("token") == "replace-with-your-discord-bot-token"
+    assert cfg.get("recovery_log_path") == "data/recovery-controls.jsonl"
+    assert cfg.get("recovery_log_retention_days") == 365
 
     for server in cfg["servers"]:
         assert server.get("kind") == "minecraft"
@@ -100,7 +104,7 @@ def test_runtime_private_files_are_not_committed() -> None:
             forbidden_paths.append(relative_posix)
         if path.name.startswith("config.") and path.suffix == ".json" and relative_posix != "config.json":
             forbidden_paths.append(relative_posix)
-        if relative.parts[:1] == ("data",) and path.suffix == ".json":
+        if relative.parts[:1] == ("data",) and path.suffix in (".json", ".jsonl"):
             forbidden_paths.append(relative_posix)
 
     assert forbidden_paths == []
@@ -131,3 +135,42 @@ def test_repo_has_no_sensitive_or_private_patterns() -> None:
                 matches.append(f"{relative.as_posix()}: {label}")
 
     assert matches == []
+
+
+def test_recovery_log_prunes_entries_older_than_retention(tmp_path) -> None:
+    from shelley.services.recovery_log import append_recovery_control_log
+
+    log_path = tmp_path / "recovery-controls.jsonl"
+    old_entry = {
+        "created_at": "2024-01-01T00:00:00+00:00",
+        "created_at_unix": int(time.time()) - 366 * 24 * 60 * 60,
+        "button_id": "old_button",
+    }
+    log_path.write_text(json.dumps(old_entry, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    asyncio.run(
+        append_recovery_control_log(
+            str(log_path),
+            {
+                "button_id": "bm_status_start",
+                "button_label": "Старт",
+                "target": "bm",
+                "action": "Старт",
+                "command_key": "start_command",
+                "status": "ok",
+                "returncode": 0,
+                "error": None,
+                "user": {
+                    "id": 1,
+                    "name": "tester",
+                    "display_name": "Tester",
+                },
+            },
+            retention_days=365,
+        )
+    )
+
+    entries = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()]
+    assert [entry["button_id"] for entry in entries] == ["bm_status_start"]
+    assert "created_at" in entries[0]
+    assert entries[0]["user"]["id"] == 1
