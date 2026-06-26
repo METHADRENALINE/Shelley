@@ -12,7 +12,7 @@ One thing will always stay private, you’ll never know the full community lineu
 
 ## What Shelley does for the server
 
-Shelley takes care of Star Messages, our small community archive for moments people don’t want to lose. When a message gets 3 star reactions from members, Shelley sends it to a dedicated star channel above the main chats. This keeps funny, useful, or important community moments visible without turning them into regular pinned messages. If the message later drops below 3 stars, Shelley removes it from that channel too.
+Shelley takes care of star messages, our small community archive for moments people don’t want to lose.
 
 Shelley keeps the game server info in one place. Members can open the status channel and see whether the configured servers are online, starting, partly available, or offline. The status cards also show the connection info, game version, player count, and download links for a modpack when that server has them in its template.
 
