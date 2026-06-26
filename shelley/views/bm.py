@@ -20,6 +20,8 @@ class BMStartButton(discord.ui.Button):
             "\u0421\u0442\u0430\u0440\u0442",
             notify=False,
             require_admin=False,
+            recovery_button_id="bm_status_start",
+            recovery_button_label="\u0421\u0442\u0430\u0440\u0442",
         )
 
 class BMRebootButton(discord.ui.Button):
@@ -38,6 +40,8 @@ class BMRebootButton(discord.ui.Button):
             "\u0420\u0435\u0441\u0442\u0430\u0440\u0442 \u0441\u0438\u0441\u0442\u0435\u043c\u044b",
             notify=False,
             require_admin=False,
+            recovery_button_id="bm_status_reboot",
+            recovery_button_label="\u0420\u0435\u0441\u0442\u0430\u0440\u0442 \u0441\u0438\u0441\u0442\u0435\u043c\u044b",
         )
 
 class BMStatusControlView(discord.ui.View):

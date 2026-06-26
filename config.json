@@ -19,6 +19,8 @@
   "update_seconds": 30,
   "timeout_seconds": 3,
   "state_path": "data/state.json",
+  "recovery_log_path": "data/recovery-controls.jsonl",
+  "recovery_log_retention_days": 365,
   "servers": [
     {
       "kind": "minecraft",
@@ -45,7 +47,8 @@
     {
       "kind": "minecraft",
       "address": "ip:port",
-      "placeholder": "MODDED_STATUS"
+      "placeholder": "MODDED_STATUS",
+      "version_edition_override": "NeoForge"
     }
   ],
   "remote_targets": {
