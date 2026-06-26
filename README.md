@@ -14,7 +14,7 @@ One thing will always stay private, you’ll never know the full community lineu
 
 Shelley takes care of star messages, our small community archive for moments people don’t want to lose.
 
-Shelley keeps the game server info in one place. Members can open the status channel and see whether the configured servers are online, starting, partly available, or offline. The status cards also show the connection info, game version, player count, and download links for a modpack when that server has them in its template.
+Shelley keeps the game servers info in one place. Members can open the status channel and see whether the configured servers are online, starting, partly available, or offline. The status cards also show the connection info, game version, player count, and download links for a modpack when that server has them in its template.
 
 For the SMP&Creative setup, Shelley treats the network as a small group of connected servers. It shows the shared status first, then the separate state of Lobby, SMP, and Creative. That makes it clear whether the whole network is fine or only one part needs attention.
 
