@@ -4,7 +4,7 @@ Discord bot made for the METHADRENALINE ᵍʳᵒᵘᵖ server. It exists to keep
 
 It is a personal community bot, not a packaged product and not a ready setup for other communities. The code is shaped around private community, its Discord channels, and its game servers habits. Changes are made when the community needs them, not to support every possible Discord server.
 
-You can review it, learn from it, or adapt ideas from it and ofc you can do whatever you want with the code and modify it to fit your own needs. :D
+You can review it, ofc you can do whatever you want with the code and modify it to fit your own needs. :D
 
 You can actually see some parts of our Discord server here, like the welcome message, our game servers, and stuff like that.
 
