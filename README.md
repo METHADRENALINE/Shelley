@@ -8,7 +8,7 @@ You can review it, ofc you can do whatever you want with the code and modify it 
 
 You can actually see some parts of our Discord server here, like the welcome message, our game servers (just their name you know), and stuff like that. You won't be able to connect to game servers if you're not on the whitelist though. 
 
-You’ll never know the full community lineup or real details about its members unless you’ve actually been with us :)
+You’ll never know the full community lineup or real details about its members unless you’ve actually been with us. :)
 
 # What Shelley does for the server
 
