@@ -48,7 +48,7 @@ Shelley includes a small admin notification command. An administrator can send t
 
 ## Game servers recovery controls
 
-Recovery buttons for the emergency case where a configured game server has stopped and players simply want to bring it back without calling an admin.
+Recovery buttons for the emergency case where a game server has stopped and players simply want to bring it back without calling an admin.
 
 When the server is offline, Shelley can show a Start button. When the server is offline or marked as starting, it can show Restart system button. These controls are only for unplanned outages.
 
