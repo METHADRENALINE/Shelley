@@ -1,0 +1,21 @@
+{
+  "embeds": [
+    {
+      "image": {
+        "url": "https://www.dropbox.com/scl/fi/nyj0ocpa52cwqkmgyq72f/server-title.png?rlkey=65d9l3q07an4cof7n86f2o9ih&st=el6w72xs&raw=1"
+      },
+      "thumbnail": {
+        "url": ""
+      },
+      "color": 4478207
+    },
+    {
+      "description": "## Скачать пак\n[RAW](https://example.com/)⠀•⠀[Prism](https://example.com/)⠀•⠀[Modrinth](https://example.com/)⠀•⠀[CurseForge](https://example.com/)",
+      "color": 4478207
+    },
+    {
+      "color": 4478207,
+      "description": "### IP\nip:port\n⠀\n### **Версия**\n[версия]\n⠀\n[онлайн]### **Статус** [статус]"
+    }
+  ]
+}
