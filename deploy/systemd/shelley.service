@@ -1,0 +1,21 @@
+[Unit]
+Description=Shelley Discord bot
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=shelley
+Group=shelley
+WorkingDirectory=/opt/shelley
+EnvironmentFile=/etc/shelley/shelley.env
+ExecStart=/opt/shelley/.venv/bin/python /opt/shelley/bot.py --config /etc/shelley/config.json
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/opt/shelley/data
+
+[Install]
+WantedBy=multi-user.target

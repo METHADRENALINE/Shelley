@@ -1,0 +1,133 @@
+{
+  "client_id": 0,
+  "token": "replace-with-your-discord-bot-token",
+  "dev_guild_id": 0,
+  "notify_channel_id": 0,
+  "welcome_channel_id": 0,
+  "status_channel_id": 0,
+  "welcome_message_path": "templates/welcome-msg.json",
+  "welcome_update_seconds": 5,
+  "star_forward": {
+    "enabled": true,
+    "source_channel_ids": [
+      0
+    ],
+    "target_channel_id": 0,
+    "emoji": "⭐",
+    "threshold": 3
+  },
+  "update_seconds": 30,
+  "timeout_seconds": 3,
+  "state_path": "data/state.json",
+  "recovery_log_path": "data/recovery-controls.jsonl",
+  "recovery_log_retention_days": 365,
+  "database": {
+    "url": "postgresql:///shelley",
+    "connect_timeout": 5,
+    "pool_min_size": 1,
+    "pool_max_size": 5
+  },
+  "points": {
+    "enabled": true,
+    "log_events": false,
+    "state_path": "data/points.json",
+    "text": {
+      "enabled": true,
+      "channel_ids": [
+        0
+      ],
+      "excluded_channel_ids": [],
+      "interval_seconds": 120,
+      "poll_seconds": 15,
+      "poll_limit": 25,
+      "poll_initial_lookback_seconds": 3600,
+      "award_min": 10,
+      "award_max": 20
+    },
+    "voice": {
+      "enabled": true,
+      "channel_ids": [
+        0
+      ],
+      "excluded_channel_ids": [],
+      "interval_seconds": 120,
+      "active_microphone_seconds": 3,
+      "check_seconds": 1,
+      "award_min": 10,
+      "award_max": 20
+    },
+    "leaderboard": {
+      "enabled": true,
+      "channel_id": 0,
+      "update_seconds": 5,
+      "limit": 10,
+      "text_color": 5793266,
+      "voice_color": 5763719
+    }
+  },
+  "servers": [
+    {
+      "kind": "minecraft",
+      "address": "ip:port",
+      "placeholder": "SMP_STATUS",
+      "components": [
+        {
+          "label": "Lobby",
+          "address": "ip:port",
+          "tmux_session": "lobby"
+        },
+        {
+          "label": "SMP",
+          "address": "ip:port",
+          "tmux_session": "survival"
+        },
+        {
+          "label": "Creative",
+          "address": "ip:port",
+          "tmux_session": "creative"
+        }
+      ]
+    },
+    {
+      "kind": "minecraft",
+      "address": "ip:port",
+      "placeholder": "MODDED_STATUS",
+      "version_edition_override": "NeoForge"
+    }
+  ],
+  "remote_targets": {
+    "bm": {
+      "host": "host-or-ip",
+      "user": "server-user",
+      "key_path": "~/.ssh/shelley_bm",
+      "connect_timeout": 10,
+      "command_timeout": 30,
+      "start_command": "/usr/local/bin/bm-safe-start",
+      "reboot_command": "/usr/local/sbin/bm-safe-reboot",
+      "status_placeholder": "MODDED_STATUS",
+      "starting_ttl_seconds": 600
+    }
+  },
+  "status_messages": [
+    {
+      "key": "smp",
+      "type": "embed",
+      "renderer": "smp_cluster",
+      "template_path": "templates/status-smp-creative.json",
+      "status_placeholder": "SMP_STATUS"
+    },
+    {
+      "key": "smp_interval",
+      "type": "separator",
+      "content": "⠀\n⠀"
+    },
+    {
+      "key": "bm",
+      "type": "embed",
+      "renderer": "bm",
+      "template_path": "templates/status-bm.json",
+      "control_target": "bm",
+      "status_placeholder": "MODDED_STATUS"
+    }
+  ]
+}
