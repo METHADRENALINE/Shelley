@@ -1,0 +1,53 @@
+[project]
+name = "shelley-discord-bot"
+version = "0.1.0"
+description = "Shelley, a Discord bot developed specifically for the private METHADRENALINE community."
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+license = "BSD-3-Clause"
+authors = [{ name = "METHADRENALINE" }]
+dependencies = [
+  "discord.py[voice]>=2.5,<3",
+  "discord-ext-voice-recv==0.5.2a179",
+  "mcstatus>=13,<14",
+  "Pillow>=10,<12",
+  "pydantic>=2.7,<3",
+  "psycopg[binary,pool]>=3.2,<4",
+  "python-dotenv>=1,<2",
+]
+
+[project.optional-dependencies]
+dev = [
+  "mypy>=1.10,<2",
+  "pytest>=8,<9",
+  "ruff>=0.5,<1",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 140
+target-version = "py311"
+exclude = [".venv", ".git", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501", "B008", "B904"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+follow_imports = "silent"
+check_untyped_defs = false
+disallow_untyped_defs = false
+warn_unused_ignores = false
+exclude = ["\\.venv", "__pycache__", "\\.pytest_cache"]
+
+[tool.setuptools.packages.find]
+include = ["shelley*"]
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
