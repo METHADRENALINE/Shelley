@@ -32,11 +32,19 @@ def random_voice_points_amount(config: PointsVoiceConfig) -> int:
     return random.randint(minimum, maximum)
 
 
-def voice_member_is_points_eligible(member: discord.Member, voice_state=None) -> bool:
+def voice_member_can_listen(member: discord.Member, voice_state=None) -> bool:
     voice_state = voice_state if voice_state is not None else getattr(member, "voice", None)
     if getattr(member, "bot", False) or voice_state is None:
         return False
-    flags = ("deaf", "self_deaf", "mute", "self_mute")
+    flags = ("deaf", "self_deaf")
+    return not any(bool(getattr(voice_state, flag, False)) for flag in flags)
+
+
+def voice_member_is_points_eligible(member: discord.Member, voice_state=None) -> bool:
+    voice_state = voice_state if voice_state is not None else getattr(member, "voice", None)
+    if not voice_member_can_listen(member, voice_state):
+        return False
+    flags = ("mute", "self_mute")
     return not any(bool(getattr(voice_state, flag, False)) for flag in flags)
 
 
@@ -203,11 +211,12 @@ class VoicePointsService:
             channel_members = getattr(channel, "members", None)
             if channel_members is None:
                 continue
-            eligible = [member for member in channel_members if voice_member_is_points_eligible(member)]
-            if len(eligible) < 2:
+            listeners = [member for member in channel_members if voice_member_can_listen(member)]
+            if len(listeners) < 2:
                 continue
-            for member in eligible:
-                members[int(member.id)] = member
+            for member in listeners:
+                if voice_member_is_points_eligible(member):
+                    members[int(member.id)] = member
         return members
 
     async def award_due(self, config: BotConfig) -> None:

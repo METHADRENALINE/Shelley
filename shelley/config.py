@@ -146,6 +146,7 @@ class PointsLeaderboardConfig(BaseModel):
     limit: int = 10
     text_color: int = 0x5865F2
     voice_color: int = 0x57F287
+    placeholder_text: str = ""
 
     @field_validator("channel_id")
     @classmethod

@@ -210,6 +210,7 @@ def test_config_validation_accepts_example_and_rejects_runtime_placeholders() ->
     assert cfg.database.pool_min_size == 1
     assert cfg.database.pool_max_size == 5
     assert cfg.points.text.interval_seconds == 120
+    assert cfg.points.leaderboard.placeholder_text == ""
     assert cfg.remote_targets["bm"].key_path == "~/.ssh/shelley_bm"
     with pytest.raises(ConfigError):
         cfg.validate_runtime()
@@ -370,7 +371,7 @@ def async_await(coro):
 
 
 def test_voice_points_eligibility_blocks_bots_deaf_mute_and_alone() -> None:
-    from shelley.cogs.voice_points import VoicePointsService, voice_member_is_points_eligible
+    from shelley.cogs.voice_points import VoicePointsService, voice_member_can_listen, voice_member_is_points_eligible
     from shelley.config import BotConfig
 
     assert voice_member_is_points_eligible(
@@ -379,6 +380,7 @@ def test_voice_points_eligibility_blocks_bots_deaf_mute_and_alone() -> None:
     assert not voice_member_is_points_eligible(SimpleNamespace(bot=True, voice=SimpleNamespace(deaf=False)))
     assert not voice_member_is_points_eligible(SimpleNamespace(bot=False, voice=SimpleNamespace(deaf=True)))
     assert not voice_member_is_points_eligible(SimpleNamespace(bot=False, voice=SimpleNamespace(self_mute=True)))
+    assert voice_member_can_listen(SimpleNamespace(bot=False, voice=SimpleNamespace(deaf=False, self_deaf=False, self_mute=True)))
 
     member1 = SimpleNamespace(id=1, bot=False, voice=SimpleNamespace(deaf=False, self_deaf=False, mute=False, self_mute=False))
     member2 = SimpleNamespace(id=2, bot=False, voice=SimpleNamespace(deaf=False, self_deaf=True, mute=False, self_mute=False))
@@ -391,12 +393,33 @@ def test_voice_points_eligibility_blocks_bots_deaf_mute_and_alone() -> None:
     assert service.eligible_members(config) == {}
 
 
+def test_voice_points_muted_listener_counts_but_does_not_receive_points() -> None:
+    from shelley.cogs.voice_points import VoicePointsService
+    from shelley.config import BotConfig
+
+    speaker = SimpleNamespace(id=1, bot=False, voice=SimpleNamespace(deaf=False, self_deaf=False, mute=False, self_mute=False))
+    muted_listener = SimpleNamespace(id=2, bot=False, voice=SimpleNamespace(deaf=False, self_deaf=False, mute=False, self_mute=True))
+    channel = SimpleNamespace(id=123, members=[speaker, muted_listener])
+    bot = SimpleNamespace(get_channel=lambda channel_id: channel if channel_id == 123 else None)
+    cfg_data = load_json("config.example.json")
+    cfg_data["points"]["voice"]["channel_ids"] = [123]
+    config = BotConfig.model_validate(cfg_data)
+    service = VoicePointsService(bot, SimpleNamespace(), lambda: None)
+    assert service.eligible_members(config) == {1: speaker}
+
+
 def test_leaderboard_renderer_uses_assets_and_generates_png() -> None:
-    from shelley.cogs.leaderboard_renderer import render_points_leaderboard_png
+    from shelley.cogs.leaderboard_renderer import compact_points_text, render_points_leaderboard_png
 
     png = render_points_leaderboard_png([(1, "rudator", 38468), (2, "wechirok", 16189)], icon_kind="text", accent_color=0x5865F2)
+    empty_png = render_points_leaderboard_png([], icon_kind="text", accent_color=0x5865F2, placeholder_text="")
+    wide_png = render_points_leaderboard_png([(1, "Wechirok", 9999999999999999)], icon_kind="voice", accent_color=0x5865F2)
     assert png.startswith(b"\x89PNG")
+    assert empty_png.startswith(b"\x89PNG")
+    assert wide_png.startswith(b"\x89PNG")
     assert len(png) > 5000
+    assert compact_points_text(999999) == "999999"
+    assert compact_points_text(1000000) == "1M"
     assert (ROOT / "assets/text-point.png").is_file()
     assert (ROOT / "assets/voice-points.png").is_file()
 
