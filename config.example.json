@@ -62,7 +62,8 @@
       "update_seconds": 5,
       "limit": 10,
       "text_color": 5793266,
-      "voice_color": 5763719
+      "voice_color": 5763719,
+      "placeholder_text": ""
     }
   },
   "servers": [

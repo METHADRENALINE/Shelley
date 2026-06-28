@@ -51,26 +51,30 @@ class LeaderboardSync:
         guild: discord.Guild,
         limit: int,
         color: int,
+        placeholder_text: str,
     ) -> discord.Embed:
         lines: list[str] = []
         for rank, name, points in await self.rows(guild, field, limit):
             clean_name = discord.utils.escape_markdown(name).replace("\n", " ")[:42]
             lines.append(f"`#{rank}`  **{clean_name}**  -  `{points}`")
         if not lines:
-            lines.append("Пока здесь пусто.")
-        return discord.Embed(title=title, description="\n".join(lines), color=int(color))
+            if placeholder_text:
+                lines.append(placeholder_text)
+        description = "\n".join(lines) if lines else None
+        return discord.Embed(title=title, description=description, color=int(color))
 
     async def build_message(self, guild: discord.Guild, config: BotConfig) -> tuple[list[discord.Embed], list[discord.File], str]:
         leaderboard_config = config.points.leaderboard
         limit = int(leaderboard_config.limit)
         text_color = int(leaderboard_config.text_color)
         voice_color = int(leaderboard_config.voice_color)
+        placeholder_text = str(leaderboard_config.placeholder_text)
         text_title = "Текст поинты"
         voice_title = "Войс поинты"
         if Image is None:
             fallback_embeds = [
-                await self.build_fallback_embed(text_title, "text_points", guild, limit, text_color),
-                await self.build_fallback_embed(voice_title, "voice_points", guild, limit, voice_color),
+                await self.build_fallback_embed(text_title, "text_points", guild, limit, text_color, placeholder_text),
+                await self.build_fallback_embed(voice_title, "voice_points", guild, limit, voice_color, placeholder_text),
             ]
             signature = json.dumps([embed.to_dict() for embed in fallback_embeds], ensure_ascii=False, sort_keys=True)
             return fallback_embeds, [], signature
@@ -84,7 +88,7 @@ class LeaderboardSync:
         files: list[discord.File] = []
         signature_payload: list[dict] = []
         for title, icon_kind, filename, color, rows in assets:
-            png = render_points_leaderboard_png(rows, icon_kind=icon_kind, accent_color=color)
+            png = render_points_leaderboard_png(rows, icon_kind=icon_kind, accent_color=color, placeholder_text=placeholder_text)
             file = discord.File(io.BytesIO(png), filename=filename)
             embed = discord.Embed(title=title, color=int(color))
             embed.set_image(url=f"attachment://{filename}")
@@ -96,7 +100,8 @@ class LeaderboardSync:
                     "icon": icon_kind,
                     "color": int(color),
                     "rows": rows,
-                    "image_version": 2,
+                    "placeholder_text": placeholder_text,
+                    "image_version": 3,
                 }
             )
         signature = json.dumps(signature_payload, ensure_ascii=False, sort_keys=True)
