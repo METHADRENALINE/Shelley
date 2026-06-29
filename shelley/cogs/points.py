@@ -144,7 +144,7 @@ class PointsCog(commands.Cog):
             int(user.id),
             kind,
             int(amount),
-            str(user),
+            str(user.name),
             str(user.display_name),
         )
         self.leaderboard.mark_dirty()
@@ -160,7 +160,7 @@ class PointsCog(commands.Cog):
             int(user.id),
             kind,
             int(amount),
-            str(user),
+            str(user.name),
             str(user.display_name),
         )
         self.leaderboard.mark_dirty()

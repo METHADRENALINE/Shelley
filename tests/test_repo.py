@@ -424,6 +424,63 @@ def test_leaderboard_renderer_uses_assets_and_generates_png() -> None:
     assert (ROOT / "assets/voice-points.png").is_file()
 
 
+def test_leaderboard_uses_display_name_top_ten_and_has_no_button_logic() -> None:
+    from shelley.cogs.leaderboard_sync import LEADERBOARD_LIMIT, LeaderboardSync
+    from shelley.cogs.points_state import PointsRow
+
+    row = PointsRow(
+        user_id=1,
+        text_points=10,
+        voice_points=0,
+        last_text_award_at=0,
+        last_voice_award_at=0,
+        last_name="stored_username",
+        last_display_name="Stored Display",
+    )
+    member = SimpleNamespace(id=1, name="actual_username", display_name="Server Nick")
+    guild = SimpleNamespace(get_member=lambda user_id: member if user_id == 1 else None)
+    bot = SimpleNamespace(
+        get_user=lambda user_id: SimpleNamespace(name="cached_username", global_name="Global Display") if user_id == 1 else None
+    )
+    sync = LeaderboardSync(bot, SimpleNamespace())
+    assert async_await(sync.resolve_board_name(guild, row)) == "Server Nick"
+    assert async_await(sync.resolve_board_name(None, row)) == "Global Display"
+    assert not hasattr(sync, "build_fallback_embed")
+    assert LEADERBOARD_LIMIT == 10
+
+    rows = [
+        PointsRow(
+            user_id=user_id,
+            text_points=1000 - user_id,
+            voice_points=500 - user_id,
+            last_text_award_at=0,
+            last_voice_award_at=0,
+            last_name=f"user{user_id}",
+            last_display_name=f"Stored {user_id}",
+        )
+        for user_id in range(1, 26)
+    ]
+    store = SimpleNamespace(top=lambda _guild_id, _field, limit: rows[:limit])
+    bot = SimpleNamespace(get_user=lambda _user_id: None)
+    guild = SimpleNamespace(
+        id=10,
+        get_member=lambda user_id: SimpleNamespace(name=f"user{user_id}", display_name=f"Display {user_id}"),
+    )
+    sync = LeaderboardSync(bot, store)
+    top_rows = async_await(sync.rows(guild, "text_points"))
+    assert top_rows[0] == (1, "Display 1", 999)
+    assert top_rows[-1] == (10, "Display 10", 990)
+    assert len(top_rows) == 10
+
+    source = (ROOT / "shelley/cogs/leaderboard_sync.py").read_text(encoding="utf-8")
+    assert "ephemeral=True" not in source
+    assert "discord.ui" not in source
+    assert "Button" not in source
+    assert "View" not in source
+    assert "rows_page" not in source
+    assert "page_key" not in source
+
+
 def test_json_state_import_counts_points_and_recovery_without_ids(tmp_path) -> None:
     from shelley.scripts.import_json_state import import_points, import_recovery
 

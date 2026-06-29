@@ -9,10 +9,12 @@ import discord
 
 from ..config import BotConfig
 from ..state import state_repository
-from .leaderboard_renderer import Image, render_points_leaderboard_png
+from .leaderboard_renderer import render_points_leaderboard_png
 from .points_state import PointsRow, PointsStore
 
 logger = logging.getLogger(__name__)
+
+LEADERBOARD_LIMIT = 10
 
 
 class LeaderboardSync:
@@ -26,60 +28,33 @@ class LeaderboardSync:
     def mark_dirty(self) -> None:
         self.dirty = True
 
-    async def resolve_display_name(self, guild: discord.Guild | None, row: PointsRow) -> str:
+    async def resolve_board_name(self, guild: discord.Guild | None, row: PointsRow) -> str:
         if guild is not None:
             member = guild.get_member(int(row.user_id))
             if member is not None:
-                return str(member.display_name)
+                return str(member.display_name or member.name)
         user = self.bot.get_user(int(row.user_id))
         if user is not None:
             return str(getattr(user, "global_name", None) or user.name)
         return str(row.last_display_name or row.last_name or row.user_id)
 
-    async def rows(self, guild: discord.Guild, field: Literal["text_points", "voice_points"], limit: int) -> list[tuple[int, str, int]]:
-        rows = self.store.top(int(guild.id), field, limit)
+    async def rows(self, guild: discord.Guild, field: Literal["text_points", "voice_points"]) -> list[tuple[int, str, int]]:
+        rows = self.store.top(int(guild.id), field, LEADERBOARD_LIMIT)
         result: list[tuple[int, str, int]] = []
         for rank, row in enumerate(rows, start=1):
-            name = await self.resolve_display_name(guild, row)
+            name = await self.resolve_board_name(guild, row)
             result.append((rank, name, row.points_for(field)))
         return result
 
-    async def build_fallback_embed(
-        self,
-        title: str,
-        field: Literal["text_points", "voice_points"],
-        guild: discord.Guild,
-        limit: int,
-        color: int,
-        placeholder_text: str,
-    ) -> discord.Embed:
-        lines: list[str] = []
-        for rank, name, points in await self.rows(guild, field, limit):
-            clean_name = discord.utils.escape_markdown(name).replace("\n", " ")[:42]
-            lines.append(f"`#{rank}`  **{clean_name}**  -  `{points}`")
-        if not lines:
-            if placeholder_text:
-                lines.append(placeholder_text)
-        description = "\n".join(lines) if lines else None
-        return discord.Embed(title=title, description=description, color=int(color))
-
     async def build_message(self, guild: discord.Guild, config: BotConfig) -> tuple[list[discord.Embed], list[discord.File], str]:
         leaderboard_config = config.points.leaderboard
-        limit = int(leaderboard_config.limit)
         text_color = int(leaderboard_config.text_color)
         voice_color = int(leaderboard_config.voice_color)
         placeholder_text = str(leaderboard_config.placeholder_text)
         text_title = "Текст поинты"
         voice_title = "Войс поинты"
-        if Image is None:
-            fallback_embeds = [
-                await self.build_fallback_embed(text_title, "text_points", guild, limit, text_color, placeholder_text),
-                await self.build_fallback_embed(voice_title, "voice_points", guild, limit, voice_color, placeholder_text),
-            ]
-            signature = json.dumps([embed.to_dict() for embed in fallback_embeds], ensure_ascii=False, sort_keys=True)
-            return fallback_embeds, [], signature
-        text_rows = await self.rows(guild, "text_points", limit)
-        voice_rows = await self.rows(guild, "voice_points", limit)
+        text_rows = await self.rows(guild, "text_points")
+        voice_rows = await self.rows(guild, "voice_points")
         assets = [
             (text_title, "text", "points-text.png", text_color, text_rows),
             (voice_title, "voice", "points-voice.png", voice_color, voice_rows),
@@ -101,7 +76,8 @@ class LeaderboardSync:
                     "color": int(color),
                     "rows": rows,
                     "placeholder_text": placeholder_text,
-                    "image_version": 3,
+                    "limit": LEADERBOARD_LIMIT,
+                    "image_version": 8,
                 }
             )
         signature = json.dumps(signature_payload, ensure_ascii=False, sort_keys=True)
@@ -139,7 +115,7 @@ class LeaderboardSync:
             repo.set("points_leaderboard_message_id", int(message.id))
             logger.info("created leaderboard message", extra={"message_id": int(message.id), "channel_id": channel_id})
         else:
-            await message.edit(embeds=embeds, attachments=files, allowed_mentions=discord.AllowedMentions.none())
+            await message.edit(embeds=embeds, attachments=files, view=None, allowed_mentions=discord.AllowedMentions.none())
         self.message = message
         self.signature = signature
         self.dirty = False

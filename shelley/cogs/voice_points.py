@@ -251,7 +251,7 @@ class VoicePointsService:
                 amount=random_voice_points_amount(voice_config),
                 now=now_wall,
                 cooldown=cooldown,
-                name=str(member) if member else None,
+                name=str(getattr(member, "name", member)) if member else None,
                 display_name=str(getattr(member, "display_name", member)) if member else None,
             )
             if award is None:

@@ -68,7 +68,7 @@ class TextPointsService:
             amount=amount,
             now=now,
             cooldown=max(1.0, float(text_config.interval_seconds)),
-            name=str(message.author),
+            name=str(getattr(message.author, "name", message.author)),
             display_name=str(getattr(message.author, "display_name", message.author)),
             text_channel_id=counting_channel_id,
             text_message_id=int(message.id),
