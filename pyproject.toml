@@ -7,7 +7,7 @@ requires-python = ">=3.11,<3.13"
 license = "BSD-3-Clause"
 authors = [{ name = "METHADRENALINE" }]
 dependencies = [
-  "discord.py[voice]>=2.5,<3",
+  "discord.py[voice]>=2.7,<3",
   "discord-ext-voice-recv==0.5.2a179",
   "mcstatus>=13,<14",
   "Pillow>=10,<12",

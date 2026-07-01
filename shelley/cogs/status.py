@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from collections import Counter
 from typing import Any
 
 import discord
@@ -46,7 +47,23 @@ async def ensure_status_messages(
     return messages
 
 
-async def collect_component_snapshots(server: ServerConfig, timeout_seconds: float, gateway_online: bool) -> StatusSnapshot:
+def choose_cluster_version(gateway_version: str | None, components: list[dict[str, Any]]) -> str | None:
+    versions = [
+        str(component.get("version") or "").strip()
+        for component in components
+        if str(component.get("status") or "") == ":green_circle:" and str(component.get("version") or "").strip()
+    ]
+    if versions:
+        return Counter(versions).most_common(1)[0][0]
+    return gateway_version
+
+
+async def collect_component_snapshots(
+    server: ServerConfig,
+    timeout_seconds: float,
+    gateway_online: bool,
+    gateway_version: str | None,
+) -> StatusSnapshot:
     component_results = await asyncio.gather(*(probe_server_component(component, timeout_seconds) for component in server.components))
     component_statuses = [result[0] for result in component_results]
     status = aggregate_cluster_status(component_statuses, gateway_online)
@@ -55,13 +72,14 @@ async def collect_component_snapshots(server: ServerConfig, timeout_seconds: flo
             "label": component.label,
             "status": component_status,
             "players": players,
+            "version": component_version,
         }
-        for component, (component_status, players) in zip(server.components, component_results, strict=True)
+        for component, (component_status, players, component_version) in zip(server.components, component_results, strict=True)
     ]
     return {
         "status": status,
         "players": sum(component["players"] for component in components),
-        "version": None,
+        "version": choose_cluster_version(gateway_version, components),
         "components": components,
     }
 
@@ -75,9 +93,7 @@ async def collect_server_snapshot(
     hard_timeout = max(1.0, timeout_seconds * 2.0 + 1.0)
     gateway_online, players, version = await with_hard_timeout(probe_server(server, timeout_seconds), hard_timeout)
     if server.components:
-        snapshot = await collect_component_snapshots(server, timeout_seconds, gateway_online)
-        snapshot["version"] = version
-        return snapshot
+        return await collect_component_snapshots(server, timeout_seconds, gateway_online, version)
     if gateway_online:
         clear_starting_status(guild_id, server.placeholder)
         return {
