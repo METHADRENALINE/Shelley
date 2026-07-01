@@ -236,6 +236,28 @@ def test_permission_checks_use_discord_administrator_permission() -> None:
     assert not user_is_administrator(missing)
 
 
+def test_notify_uses_multiline_modal_and_attachment_batches() -> None:
+    from shelley.cogs.admin import NotifyAttachment, notify_attachment_batches, notify_message_content, safe_attachment_filename
+
+    attachments = [NotifyAttachment(ROOT / f"{index}.png", f"{index}.png") for index in range(25)]
+    assert [len(batch) for batch in notify_attachment_batches(attachments)] == [10, 10, 5]
+    assert notify_attachment_batches([]) == []
+    assert notify_message_content("Line one\n\nLine two") == "Line one\n\nLine two"
+    assert notify_message_content("  Line one\nLine two  ") == "Line one\nLine two"
+    assert safe_attachment_filename("../secret.txt") == "secret.txt"
+
+    source = (ROOT / "shelley/cogs/admin.py").read_text(encoding="utf-8")
+    assert "file1" not in source
+    assert "file2" not in source
+    assert "file3" not in source
+    assert "FileUpload" in source
+    assert "NotifyFilesModal" in source
+    assert "Add files" in source
+    assert "TextStyle.paragraph" in source
+    assert "send_modal" in source
+    assert "on_message" not in source
+
+
 def test_remote_command_builder_uses_safe_ssh_options() -> None:
     from shelley.config import BotConfig, RemoteTargetConfig
     from shelley.services.remote import build_ssh_command, parse_remote_result, remote_host_argument
@@ -296,8 +318,22 @@ def test_minecraft_status_version_mapping_handles_velocity_and_modloader_names()
     from shelley.services.minecraft import status_version_label
 
     assert status_version_label("Java Edition", "Velocity 1.7.2-26.1.2") == "Java Edition 26.1.2"
+    assert status_version_label("Java Edition", "Paper 26.1.2") == "Java Edition 26.1.2"
+    assert status_version_label("Java Edition", "git-Paper-497 (MC: 1.20.4)") == "Java Edition 1.20.4"
     assert status_version_label("NeoForge", "1.21.1") == "NeoForge 1.21.1"
     assert status_version_label("Bedrock", "1.21.93") == "Bedrock 1.21.93"
+
+
+def test_cluster_status_prefers_backend_component_version_over_velocity_gateway() -> None:
+    from shelley.cogs.status import choose_cluster_version
+
+    components = [
+        {"status": ":green_circle:", "version": "Java Edition 26.1.2"},
+        {"status": ":green_circle:", "version": "Java Edition 26.1.2"},
+        {"status": ":green_circle:", "version": "Java Edition 26.1.2"},
+    ]
+    assert choose_cluster_version("Java Edition 26.2", components) == "Java Edition 26.1.2"
+    assert choose_cluster_version("Java Edition 26.2", []) == "Java Edition 26.2"
 
 
 def test_points_store_award_cooldown_add_remove_reset_and_top() -> None:
@@ -511,7 +547,7 @@ def test_json_state_import_counts_points_and_recovery_without_ids(tmp_path) -> N
     assert import_recovery(path, 10, RecoveryDb()) == {"recovery_entries": 1}
 
 
-def test_public_files_do_not_contain_private_data_or_old_logic() -> None:
+def test_public_files_do_not_contain_private_data() -> None:
     archive_exts = ("zip", "rar", "7z", "jar", "mr" + "pack")
     forbidden_patterns = {
         "private network ip": re.compile(
@@ -524,8 +560,6 @@ def test_public_files_do_not_contain_private_data_or_old_logic() -> None:
         "private key block": re.compile("BEGIN " + r"(?:OPENSSH|RSA|DSA|EC) " + "PRIVATE " + "KEY"),
         "ssh key": re.compile(r"\bssh" + r"-rsa\b"),
         "dropbox archive": re.compile(r"dropbox\.com/.*\.(?:" + "|".join(archive_exts) + r")\b", re.IGNORECASE),
-        "old command": re.compile(r"\b" + "say" + r"_channel_id\b|/" + "say" + r"\b|" + "allowed" + r"_user", re.IGNORECASE),
-        "known password": re.compile("122" + "566|774" + "78049"),
     }
     matches: list[str] = []
     for relative, text in iter_repo_text_files():

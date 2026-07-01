@@ -20,6 +20,23 @@ JAVA_MODLOADERS = (
     ("quilt", "Quilt"),
 )
 
+JAVA_SOFTWARE_PREFIXES = (
+    "paper",
+    "purpur",
+    "spigot",
+    "bukkit",
+    "craftbukkit",
+    "pufferfish",
+    "folia",
+    "neoforge",
+    "minecraftforge",
+    "forge",
+    "fabricloader",
+    "fabric",
+    "quilt_loader",
+    "quilt",
+)
+
 
 def iter_status_strings(value: Any) -> Iterable[str]:
     if value is None:
@@ -68,11 +85,27 @@ def detect_java_modloader(status: Any) -> str | None:
     return None
 
 
-def status_version_label(edition: str, version_name: object) -> str:
+def clean_version_name(edition: str, version_name: object) -> str:
     version = str(version_name or "").strip()
+    if not version:
+        return ""
+    mc_match = re.search(r"\bMC:\s*(?P<minecraft_version>[^)]+)\)", version, re.IGNORECASE)
+    if mc_match:
+        return mc_match.group("minecraft_version").strip()
     velocity_match = re.match(r"^Velocity\s+\S+-(?P<minecraft_version>.+)$", version, re.IGNORECASE)
     if velocity_match:
         version = velocity_match.group("minecraft_version").strip()
+    prefix_match = re.match(r"^(?P<prefix>[A-Za-z_]+)\s+(?P<minecraft_version>.+)$", version)
+    if prefix_match:
+        prefix = prefix_match.group("prefix").strip().lower()
+        edition_key = str(edition or "").strip().lower().replace(" ", "")
+        if prefix in JAVA_SOFTWARE_PREFIXES or prefix == edition_key:
+            version = prefix_match.group("minecraft_version").strip()
+    return version
+
+
+def status_version_label(edition: str, version_name: object) -> str:
+    version = clean_version_name(edition, version_name)
     return f"{edition} {version}".strip()
 
 
@@ -153,18 +186,15 @@ async def tmux_session_exists(session: str, timeout: float = 2.0) -> bool:
         return False
 
 
-async def probe_server_component(
-    component: ServerComponentConfig,
-    timeout: float,
-) -> tuple[str, int]:
-    online, players, _version = await minecraft_java_status(component.address, timeout)
+async def probe_server_component(component: ServerComponentConfig, timeout: float) -> tuple[str, int, str | None]:
+    online, players, version = await minecraft_java_status(component.address, timeout)
     if online:
-        return ":green_circle:", int(players or 0)
+        return ":green_circle:", int(players or 0), version
 
     if component.tmux_session and await tmux_session_exists(component.tmux_session):
-        return ":yellow_circle:", 0
+        return ":yellow_circle:", 0, None
 
-    return ":red_circle:", 0
+    return ":red_circle:", 0, None
 
 
 def aggregate_cluster_status(component_statuses: list[str], gateway_online: bool) -> str:
