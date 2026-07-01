@@ -63,10 +63,7 @@ def notify_message_content(text: str) -> str:
 def notify_attachment_batches(
     attachments: list[NotifyAttachment],
 ) -> list[list[NotifyAttachment]]:
-    return [
-        attachments[index : index + DISCORD_FILES_PER_MESSAGE]
-        for index in range(0, len(attachments), DISCORD_FILES_PER_MESSAGE)
-    ]
+    return [attachments[index : index + DISCORD_FILES_PER_MESSAGE] for index in range(0, len(attachments), DISCORD_FILES_PER_MESSAGE)]
 
 
 def safe_attachment_filename(filename: str) -> str:
@@ -77,11 +74,7 @@ def safe_attachment_filename(filename: str) -> str:
 def notify_session_text(session: NotifySession) -> str:
     count = len(session.attachments)
     plural = "" if count == 1 else "s"
-    return (
-        "Notification draft is ready.\n"
-        f"Attached file{plural}: {count}\n"
-        "Use Add files for more uploads, then press Publish."
-    )
+    return f"Notification draft is ready.\nAttached file{plural}: {count}\nUse Add files for more uploads, then press Publish."
 
 
 class NotifyModal(discord.ui.Modal):
