@@ -32,7 +32,7 @@ jobs:
         run: python -m compileall -q bot.py shelley tests
 
       - name: Secret scan
-        run: python -m pytest -q tests/test_repo.py::test_public_files_do_not_contain_private_data_or_old_logic tests/test_repo.py::test_runtime_private_files_are_not_committed
+        run: python -m pytest -q tests/test_repo.py::test_public_files_do_not_contain_private_data tests/test_repo.py::test_runtime_private_files_are_not_committed
 
       - name: Tests
         run: python -m pytest -q
