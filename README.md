@@ -20,7 +20,7 @@ When the template changes, Shelley updates the Discord message. If the message w
 
 ## Announcements
 
-Shelley includes a small admin notification command. An administrator can send text to the configured notification channel and attach files. Technically, it doesn’t really make sense, ik that, it does give the server some personality though.
+An admin can send text to the configured notification channel and attach files. Technically, it doesn’t really make sense, ik that, it does give the server some personality though.
 
 ## Star messages
 
@@ -44,4 +44,4 @@ Recovery buttons for the emergency case where a game server has stopped and play
 
 When the server is offline, Shelley can show a Start button. When the server is offline or marked as starting, it can show Restart system button. These controls are only for unplanned outages.
 
-Admins also have slash commands for the same kind of remote action. Those commands are restricted to users with administrator permission.
+Admins also have slash commands for the same kind of remote action.
