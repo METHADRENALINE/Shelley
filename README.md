@@ -12,14 +12,6 @@ You’ll never know the full community lineup or real details about its members,
 
 # What Shelley does for the server
 
-Shelley takes care of star messages, our small community archive for moments people don’t want to lose.
-
-Shelley keeps the game servers info in one place. Members can open the status channel and see whether the configured servers are online, starting, partly available, or offline. The status cards also show the connection info, game version, player count, and download links for a modpack when that server has them in its template.
-
-For the SMP&Creative setup, Shelley treats the network as a small group of connected servers. It shows the shared status first, then the separate state of Lobby, SMP, and Creative. That makes it clear whether the whole network is fine or only one part needs attention.
-
-For the modded Minecraft server, like Magicway or Bizarre Machinery, Shelley shows a separate status card. When the server is online, the card stays focused on info for players. When the server is offline or still starting, Shelley adds recovery controls directly under the status message.
-
 ## Welcome guide
 
 Shelley keeps a single welcome message in the configured welcome channel. The message is built from a JSON template, so the actual text and embeds can be edited without changing the bot code.
