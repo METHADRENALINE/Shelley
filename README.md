@@ -18,6 +18,10 @@ Shelley keeps a single welcome message in the configured welcome channel. The me
 
 When the template changes, Shelley updates the Discord message. If the message was deleted, Shelley recreates it.
 
+## Announcements
+
+Shelley includes a small admin notification command. An administrator can send text to the configured notification channel and attach files. Technically, it doesn’t really make sense, ik that, it does give the server some personality though.
+
 ## Star messages
 
 Shelley watches selected chat channels for ⭐ reactions. When a message gets 3 stars from members (bot reactions don’t count heh), Shelley copies it to the star channel, keeping memorable community moments separate from regular pinned messages.
@@ -25,10 +29,6 @@ Shelley watches selected chat channels for ⭐ reactions. When a message gets 3 
 If the message later drops below the required number of stars, or if the original message is deleted, Shelley removes the saved copy from the star channel too.
 
 In practice, star messages work like a community archive. Members decide what deserves to stay visible, Shelley just handles the boring part in the background.
-
-## Announcements
-
-Shelley includes a small admin notification command. An administrator can send text to the configured notification channel and attach files. Technically, it doesn’t really make sense, ik that, it does give the server some personality though.
 
 ## Game servers status icons
 
