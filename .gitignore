@@ -26,3 +26,5 @@ secrets/
 Thumbs.db
 .vscode/
 .idea/
+build/
+dist/
