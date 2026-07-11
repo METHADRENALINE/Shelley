@@ -444,6 +444,55 @@ def test_voice_points_muted_listener_counts_but_does_not_receive_points() -> Non
     assert service.eligible_members(config) == {1: speaker}
 
 
+def test_voice_monitor_recovers_stale_cached_client(monkeypatch) -> None:
+    import shelley.cogs.voice_points as voice_points
+
+    events = []
+    guild = SimpleNamespace(id=10)
+    channel = SimpleNamespace(id=20, guild=guild)
+
+    class StaleVoiceClient:
+        def __init__(self) -> None:
+            self.guild = guild
+            self.channel = channel
+
+        def is_connected(self) -> bool:
+            return False
+
+        async def disconnect(self, *, force: bool = False) -> None:
+            events.append(("disconnect", force))
+
+    class ActiveVoiceClient:
+        def __init__(self) -> None:
+            self.guild = guild
+            self.channel = channel
+
+        def is_connected(self) -> bool:
+            return True
+
+        def is_listening(self) -> bool:
+            return False
+
+        def listen(self, _sink) -> None:
+            events.append("listen")
+
+    stale = StaleVoiceClient()
+    active = ActiveVoiceClient()
+    bot = SimpleNamespace(voice_clients=[stale])
+    service = voice_points.VoicePointsService(bot, SimpleNamespace(), lambda: None)
+
+    async def connect(_channel):
+        events.append("connect")
+        return active
+
+    monkeypatch.setattr(service, "_connect_voice_client", connect)
+    monkeypatch.setattr(voice_points, "PointsVoiceSink", lambda _service: object())
+
+    async_await(service._ensure_channel_monitor(channel))
+
+    assert events == [("disconnect", True), "connect", "listen"]
+
+
 def test_leaderboard_renderer_uses_assets_and_generates_png() -> None:
     from shelley.cogs.leaderboard_renderer import compact_points_text, render_points_leaderboard_png
 
