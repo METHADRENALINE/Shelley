@@ -50,10 +50,12 @@
         0
       ],
       "excluded_channel_ids": [],
-      "interval_seconds": 120,
-      "active_microphone_seconds": 3,
-      "check_seconds": 1,
-      "award_min": 10,
+        "interval_seconds": 120,
+        "active_microphone_seconds": 3,
+        "check_seconds": 1,
+        "reconnect_grace_seconds": 60,
+        "reconnect_retry_seconds": 120,
+        "award_min": 10,
       "award_max": 20
     },
     "leaderboard": {

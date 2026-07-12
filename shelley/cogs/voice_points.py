@@ -90,6 +90,8 @@ class VoicePointsService:
         self.warning_printed = False
         self.log_events = False
         self.monitor_lock = asyncio.Lock()
+        self.connection_unavailable_since: dict[int, float] = {}
+        self.next_reconnect_attempt_at: dict[int, float] = {}
 
     def set_loop(self, loop: asyncio.AbstractEventLoop) -> None:
         self.loop = loop
@@ -160,9 +162,32 @@ class VoicePointsService:
                 return voice_client
         return None
 
+    def _mark_connection_unavailable(self, guild_id: int, now: float) -> float:
+        unavailable_since = self.connection_unavailable_since.get(guild_id)
+        if unavailable_since is None:
+            unavailable_since = float(now)
+            self.connection_unavailable_since[guild_id] = unavailable_since
+            self.clear_tracking()
+            logger.warning(
+                "voice connection interrupted; waiting for automatic recovery",
+                extra={"guild_id": int(guild_id)},
+            )
+        return unavailable_since
+
+    def _mark_connection_healthy(self, guild_id: int, now: float) -> None:
+        unavailable_since = self.connection_unavailable_since.pop(guild_id, None)
+        self.next_reconnect_attempt_at.pop(guild_id, None)
+        if unavailable_since is not None:
+            logger.info(
+                "voice connection recovered",
+                extra={
+                    "guild_id": int(guild_id),
+                    "unavailable_seconds": max(0.0, float(now) - unavailable_since),
+                },
+            )
+
     async def _discard_stale_voice_client(self, voice_client: Any, guild_id: int) -> None:
-        self.clear_tracking()
-        logger.warning("discarding stale voice client", extra={"guild_id": int(guild_id)})
+        logger.warning("forcing stale voice client recovery", extra={"guild_id": int(guild_id)})
         try:
             await asyncio.wait_for(voice_client.disconnect(force=True), timeout=10.0)
         except Exception:
@@ -181,50 +206,87 @@ class VoicePointsService:
             self_deaf=False,
         )
 
-    async def _ensure_channel_monitor(self, target_channel: Any) -> None:
+    async def _attempt_voice_connection(self, target_channel: Any, guild_id: int, retry_seconds: float) -> Any | None:
+        now = time.monotonic()
+        if now < float(self.next_reconnect_attempt_at.get(guild_id, 0.0)):
+            return None
+        self.next_reconnect_attempt_at[guild_id] = now + max(10.0, retry_seconds)
+        try:
+            voice_client = await self._connect_voice_client(target_channel)
+        except discord.ClientException:
+            cached_voice_client = self._voice_client_for_guild(guild_id)
+            if cached_voice_client is not None and cached_voice_client.is_connected():
+                self._mark_connection_healthy(guild_id, time.monotonic())
+                return cached_voice_client
+            self._mark_connection_unavailable(guild_id, now)
+            logger.exception("voice connection attempt was rejected", extra={"guild_id": int(guild_id)})
+            return None
+        except Exception:
+            self._mark_connection_unavailable(guild_id, now)
+            logger.exception("voice connection attempt failed", extra={"guild_id": int(guild_id)})
+            return None
+        self._mark_connection_healthy(guild_id, time.monotonic())
+        return voice_client
+
+    async def _ensure_channel_monitor(
+        self,
+        target_channel: Any,
+        reconnect_grace_seconds: float,
+        reconnect_retry_seconds: float,
+    ) -> bool:
         guild_id = int(target_channel.guild.id)
+        now = time.monotonic()
         voice_client = self._voice_client_for_guild(guild_id)
         if voice_client is not None and not voice_client.is_connected():
+            unavailable_since = self._mark_connection_unavailable(guild_id, now)
+            if now - unavailable_since < max(10.0, reconnect_grace_seconds):
+                return False
+            if now < float(self.next_reconnect_attempt_at.get(guild_id, 0.0)):
+                return False
             await self._discard_stale_voice_client(voice_client, guild_id)
-            voice_client = None
+            voice_client = await self._attempt_voice_connection(target_channel, guild_id, reconnect_retry_seconds)
         if voice_client is None:
-            try:
-                voice_client = await self._connect_voice_client(target_channel)
-            except discord.ClientException:
-                cached_voice_client = self._voice_client_for_guild(guild_id)
-                if cached_voice_client is None:
-                    raise
-                if not cached_voice_client.is_connected():
-                    await self._discard_stale_voice_client(cached_voice_client, guild_id)
-                    voice_client = await self._connect_voice_client(target_channel)
-                else:
-                    voice_client = cached_voice_client
+            voice_client = await self._attempt_voice_connection(target_channel, guild_id, reconnect_retry_seconds)
+            if voice_client is None:
+                return False
+        self._mark_connection_healthy(guild_id, time.monotonic())
         if getattr(getattr(voice_client, "channel", None), "id", None) != target_channel.id:
-            await voice_client.move_to(target_channel)
+            try:
+                await voice_client.move_to(target_channel)
+            except Exception:
+                self._mark_connection_unavailable(guild_id, time.monotonic())
+                logger.exception("cannot move voice monitor to configured channel", extra={"guild_id": int(guild_id)})
+                return False
         is_listening = getattr(voice_client, "is_listening", None)
         if callable(is_listening) and is_listening():
-            return
+            return True
         listen = getattr(voice_client, "listen", None)
         if not callable(listen):
             logger.warning("current voice client does not support receive listening")
-            return
-        listen(PointsVoiceSink(self))
+            return False
+        try:
+            listen(PointsVoiceSink(self))
+        except Exception:
+            self._mark_connection_unavailable(guild_id, time.monotonic())
+            logger.exception("cannot start voice activity listener", extra={"guild_id": int(guild_id)})
+            return False
         logger.info("listening for voice activity", extra={"channel_id": int(target_channel.id)})
+        return True
 
-    async def ensure_monitor(self, config: BotConfig) -> None:
+    async def ensure_monitor(self, config: BotConfig) -> bool:
         voice_config = config.points.voice
         if voice_recv is None or PointsVoiceSink is None:
             if not self.warning_printed:
                 logger.warning("discord-ext-voice-recv is not installed; voice points are disabled")
                 self.warning_printed = True
-            return
+            return False
         channel_ids = [
             channel_id
             for channel_id in int_id_set(voice_config.channel_ids)
             if channel_id not in int_id_set(voice_config.excluded_channel_ids)
         ]
         if not channel_ids:
-            return
+            return False
         target_channel = None
         for channel_id in channel_ids:
             channel = self.bot.get_channel(channel_id)
@@ -238,9 +300,13 @@ class VoicePointsService:
                 target_channel = channel
                 break
         if target_channel is None:
-            return
+            return False
         async with self.monitor_lock:
-            await self._ensure_channel_monitor(target_channel)
+            return await self._ensure_channel_monitor(
+                target_channel,
+                reconnect_grace_seconds=float(voice_config.reconnect_grace_seconds),
+                reconnect_retry_seconds=float(voice_config.reconnect_retry_seconds),
+            )
 
     def eligible_members(self, config: BotConfig) -> dict[int, discord.Member]:
         voice_config = config.points.voice
