@@ -91,8 +91,11 @@ class PointsCog(commands.Cog):
                 config = get_config()
                 self.voice_points.log_events = bool(config.points.log_events)
                 if config.points.enabled and config.points.voice.enabled:
-                    await self.voice_points.ensure_monitor(config)
-                    await self.voice_points.award_due(config)
+                    monitor_ready = await self.voice_points.ensure_monitor(config)
+                    if monitor_ready:
+                        await self.voice_points.award_due(config)
+                    else:
+                        self.voice_points.clear_tracking()
                     sleep_seconds = max(0.5, float(config.points.voice.check_seconds))
                 else:
                     self.voice_points.clear_tracking()

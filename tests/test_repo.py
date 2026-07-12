@@ -448,6 +448,7 @@ def test_voice_monitor_recovers_stale_cached_client(monkeypatch) -> None:
     import shelley.cogs.voice_points as voice_points
 
     events = []
+    clock = SimpleNamespace(now=100.0)
     guild = SimpleNamespace(id=10)
     channel = SimpleNamespace(id=20, guild=guild)
 
@@ -480,17 +481,111 @@ def test_voice_monitor_recovers_stale_cached_client(monkeypatch) -> None:
     active = ActiveVoiceClient()
     bot = SimpleNamespace(voice_clients=[stale])
     service = voice_points.VoicePointsService(bot, SimpleNamespace(), lambda: None)
+    service.started_at[30] = 90.0
 
     async def connect(_channel):
         events.append("connect")
         return active
 
+    monkeypatch.setattr(voice_points.time, "monotonic", lambda: clock.now)
     monkeypatch.setattr(service, "_connect_voice_client", connect)
     monkeypatch.setattr(voice_points, "PointsVoiceSink", lambda _service: object())
 
-    async_await(service._ensure_channel_monitor(channel))
+    assert not async_await(service._ensure_channel_monitor(channel, 60, 120))
+    assert events == []
+    assert service.started_at == {}
+    assert service.active_seconds == {}
+
+    clock.now = 161.0
+    assert async_await(service._ensure_channel_monitor(channel, 60, 120))
 
     assert events == [("disconnect", True), "connect", "listen"]
+
+
+def test_voice_monitor_allows_automatic_recovery_without_rejoining(monkeypatch) -> None:
+    import shelley.cogs.voice_points as voice_points
+
+    events = []
+    clock = SimpleNamespace(now=100.0)
+    guild = SimpleNamespace(id=10)
+    channel = SimpleNamespace(id=20, guild=guild)
+
+    class RecoveringVoiceClient:
+        def __init__(self) -> None:
+            self.guild = guild
+            self.channel = channel
+            self.connected = False
+
+        def is_connected(self) -> bool:
+            return self.connected
+
+        def is_listening(self) -> bool:
+            return False
+
+        def listen(self, _sink) -> None:
+            events.append("listen")
+
+        async def disconnect(self, *, force: bool = False) -> None:
+            events.append(("disconnect", force))
+
+    voice_client = RecoveringVoiceClient()
+    service = voice_points.VoicePointsService(
+        SimpleNamespace(voice_clients=[voice_client]),
+        SimpleNamespace(),
+        lambda: None,
+    )
+
+    async def connect(_channel):
+        events.append("connect")
+        return voice_client
+
+    monkeypatch.setattr(voice_points.time, "monotonic", lambda: clock.now)
+    monkeypatch.setattr(service, "_connect_voice_client", connect)
+    monkeypatch.setattr(voice_points, "PointsVoiceSink", lambda _service: object())
+
+    assert not async_await(service._ensure_channel_monitor(channel, 60, 120))
+    clock.now = 105.0
+    voice_client.connected = True
+    assert async_await(service._ensure_channel_monitor(channel, 60, 120))
+
+    assert events == ["listen"]
+    assert service.connection_unavailable_since == {}
+    assert service.next_reconnect_attempt_at == {}
+
+
+def test_voice_monitor_rate_limits_failed_connections(monkeypatch) -> None:
+    import shelley.cogs.voice_points as voice_points
+
+    events = []
+    clock = SimpleNamespace(now=100.0)
+    guild = SimpleNamespace(id=10)
+    channel = SimpleNamespace(id=20, guild=guild)
+    service = voice_points.VoicePointsService(SimpleNamespace(voice_clients=[]), SimpleNamespace(), lambda: None)
+
+    async def connect(_channel):
+        events.append("connect")
+        raise OSError("unavailable")
+
+    monkeypatch.setattr(voice_points.time, "monotonic", lambda: clock.now)
+    monkeypatch.setattr(service, "_connect_voice_client", connect)
+
+    assert not async_await(service._ensure_channel_monitor(channel, 60, 120))
+    clock.now = 101.0
+    assert not async_await(service._ensure_channel_monitor(channel, 60, 120))
+    assert events == ["connect"]
+
+    clock.now = 220.0
+    assert not async_await(service._ensure_channel_monitor(channel, 60, 120))
+    assert events == ["connect", "connect"]
+
+
+def test_voice_reconnect_config_rejects_aggressive_intervals() -> None:
+    from shelley.config import BotConfig
+
+    cfg_data = load_json("config.example.json")
+    cfg_data["points"]["voice"]["reconnect_grace_seconds"] = 10
+    with pytest.raises(ValidationError):
+        BotConfig.model_validate(cfg_data)
 
 
 def test_leaderboard_renderer_uses_assets_and_generates_png() -> None:

@@ -115,6 +115,8 @@ class PointsVoiceConfig(BaseModel):
     interval_seconds: float = 120
     active_microphone_seconds: float = 3
     check_seconds: float = 1
+    reconnect_grace_seconds: float = 60
+    reconnect_retry_seconds: float = 120
     award_min: int = 10
     award_max: int = 20
 
@@ -123,11 +125,24 @@ class PointsVoiceConfig(BaseModel):
     def validate_channel_ids(cls, value: list[int]) -> list[int]:
         return [int(item) for item in value if int(item) >= 0]
 
-    @field_validator("interval_seconds", "active_microphone_seconds", "check_seconds")
+    @field_validator(
+        "interval_seconds",
+        "active_microphone_seconds",
+        "check_seconds",
+        "reconnect_grace_seconds",
+        "reconnect_retry_seconds",
+    )
     @classmethod
     def validate_seconds(cls, value: float) -> float:
         if float(value) < 0:
             raise ValueError("seconds values must not be negative")
+        return float(value)
+
+    @field_validator("reconnect_grace_seconds", "reconnect_retry_seconds")
+    @classmethod
+    def validate_reconnect_seconds(cls, value: float) -> float:
+        if float(value) < 30:
+            raise ValueError("voice reconnect values must be at least 30 seconds")
         return float(value)
 
     @model_validator(mode="after")
