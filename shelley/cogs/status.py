@@ -22,6 +22,8 @@ from ..views.bm import status_message_view
 logger = logging.getLogger(__name__)
 
 StatusSnapshot = dict[str, Any]
+ProbeResult = tuple[bool, int | None, str | None]
+ComponentProbeResult = tuple[str, int, str | None]
 
 
 async def fetch_status_channel(bot: commands.Bot, channel_id: int) -> discord.TextChannel:
@@ -58,13 +60,68 @@ def choose_cluster_version(gateway_version: str | None, components: list[dict[st
     return gateway_version
 
 
-async def collect_component_snapshots(
+def server_probe_hard_timeout(timeout_seconds: float) -> float:
+    return max(1.0, timeout_seconds + 1.0)
+
+
+async def probe_gateway_safely(
     server: ServerConfig,
     timeout_seconds: float,
+) -> ProbeResult:
+    try:
+        return await with_hard_timeout(
+            probe_server(server, timeout_seconds),
+            server_probe_hard_timeout(timeout_seconds),
+        )
+    except TimeoutError:
+        logger.warning(
+            "minecraft gateway probe timed out",
+            extra={"placeholder": server.placeholder, "kind": server.kind},
+        )
+    except Exception:
+        logger.exception(
+            "minecraft gateway probe failed",
+            extra={"placeholder": server.placeholder, "kind": server.kind},
+        )
+    return False, None, None
+
+
+async def probe_component_safely(
+    server: ServerConfig,
+    component: Any,
+    timeout_seconds: float,
+) -> ComponentProbeResult:
+    try:
+        return await with_hard_timeout(
+            probe_server_component(component, timeout_seconds),
+            max(1.0, timeout_seconds + 3.0),
+        )
+    except TimeoutError:
+        logger.warning(
+            "minecraft component probe timed out",
+            extra={"placeholder": server.placeholder, "component": component.label},
+        )
+    except Exception:
+        logger.exception(
+            "minecraft component probe failed",
+            extra={"placeholder": server.placeholder, "component": component.label},
+        )
+    return ":red_circle:", 0, None
+
+
+async def collect_component_results(
+    server: ServerConfig,
+    timeout_seconds: float,
+) -> list[ComponentProbeResult]:
+    return list(await asyncio.gather(*(probe_component_safely(server, component, timeout_seconds) for component in server.components)))
+
+
+def build_cluster_snapshot(
+    server: ServerConfig,
+    component_results: list[ComponentProbeResult],
     gateway_online: bool,
     gateway_version: str | None,
 ) -> StatusSnapshot:
-    component_results = await asyncio.gather(*(probe_server_component(component, timeout_seconds) for component in server.components))
     component_statuses = [result[0] for result in component_results]
     status = aggregate_cluster_status(component_statuses, gateway_online)
     components = [
@@ -84,46 +141,104 @@ async def collect_component_snapshots(
     }
 
 
+def offline_snapshot(
+    server: ServerConfig,
+    starting_statuses: set[str],
+) -> StatusSnapshot:
+    if server.components:
+        return {
+            "status": ":red_circle:",
+            "players": 0,
+            "version": None,
+            "components": [
+                {
+                    "label": component.label,
+                    "status": ":red_circle:",
+                    "players": 0,
+                    "version": None,
+                }
+                for component in server.components
+            ],
+        }
+    status = ":yellow_circle:" if server.placeholder in starting_statuses else ":red_circle:"
+    return {
+        "status": status,
+        "players": 0,
+        "version": None,
+        "components": [],
+    }
+
+
 async def collect_server_snapshot(
     guild_id: int,
     server: ServerConfig,
     timeout_seconds: float,
     starting_statuses: set[str],
 ) -> StatusSnapshot:
-    hard_timeout = max(1.0, timeout_seconds * 2.0 + 1.0)
-    gateway_online, players, version = await with_hard_timeout(probe_server(server, timeout_seconds), hard_timeout)
-    if server.components:
-        return await collect_component_snapshots(server, timeout_seconds, gateway_online, version)
-    if gateway_online:
-        clear_starting_status(guild_id, server.placeholder)
-        return {
-            "status": ":green_circle:",
-            "players": int(players or 0),
-            "version": version,
-            "components": [],
-        }
-    if server.placeholder in starting_statuses:
-        return {
-            "status": ":yellow_circle:",
-            "players": 0,
-            "version": version,
-            "components": [],
-        }
-    return {
-        "status": ":red_circle:",
-        "players": 0,
-        "version": version,
-        "components": [],
-    }
+    try:
+        if server.components:
+            gateway_result, component_results = await asyncio.gather(
+                probe_gateway_safely(server, timeout_seconds),
+                collect_component_results(server, timeout_seconds),
+            )
+            gateway_online, _players, version = gateway_result
+            return build_cluster_snapshot(
+                server,
+                component_results,
+                gateway_online,
+                version,
+            )
+
+        gateway_online, players, version = await probe_gateway_safely(
+            server,
+            timeout_seconds,
+        )
+        if gateway_online:
+            try:
+                clear_starting_status(guild_id, server.placeholder)
+            except Exception:
+                logger.exception(
+                    "failed to clear starting status",
+                    extra={"placeholder": server.placeholder},
+                )
+            return {
+                "status": ":green_circle:",
+                "players": int(players or 0),
+                "version": version,
+                "components": [],
+            }
+        return offline_snapshot(server, starting_statuses)
+    except Exception:
+        logger.exception(
+            "server snapshot collection failed",
+            extra={"placeholder": server.placeholder},
+        )
+        return offline_snapshot(server, starting_statuses)
 
 
 async def collect_status(config: BotConfig, guild_id: int) -> dict[str, StatusSnapshot]:
-    snapshots: dict[str, StatusSnapshot] = {}
-    starting_statuses = load_active_starting_statuses(guild_id)
+    try:
+        starting_statuses = load_active_starting_statuses(guild_id)
+    except Exception:
+        logger.exception("failed to load starting statuses")
+        starting_statuses = set()
     timeout_seconds = float(config.timeout_seconds)
-    for server in config.servers:
-        snapshots[server.placeholder] = await collect_server_snapshot(guild_id, server, timeout_seconds, starting_statuses)
-    apply_status_version_memory(guild_id, snapshots)
+    results = await asyncio.gather(
+        *(
+            collect_server_snapshot(
+                guild_id,
+                server,
+                timeout_seconds,
+                starting_statuses,
+            )
+            for server in config.servers
+        )
+    )
+    snapshots = {server.placeholder: snapshot for server, snapshot in zip(config.servers, results, strict=True)}
+    try:
+        apply_status_version_memory(guild_id, snapshots)
+    except Exception:
+        logger.exception("failed to update status version memory")
     return snapshots
 
 
@@ -199,10 +314,26 @@ async def publish_status_messages(
     for index, message_cfg in enumerate(status_messages):
         try:
             content, embeds, control_status = render_status_embed(message_cfg, snapshots)
+            await publish_status_message(
+                channel,
+                message_cfg,
+                index,
+                content,
+                embeds,
+                control_status,
+                messages,
+                last_signatures,
+            )
         except KeyError:
-            logger.warning("missing status snapshot", extra={"placeholder": message_cfg.status_placeholder})
-            continue
-        await publish_status_message(channel, message_cfg, index, content, embeds, control_status, messages, last_signatures)
+            logger.warning(
+                "missing status snapshot",
+                extra={"placeholder": message_cfg.status_placeholder},
+            )
+        except Exception:
+            logger.exception(
+                "status message update failed",
+                extra={"key": message_cfg.key},
+            )
 
 
 def handle_status_error() -> None:

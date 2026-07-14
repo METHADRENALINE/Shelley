@@ -336,6 +336,209 @@ def test_cluster_status_prefers_backend_component_version_over_velocity_gateway(
     assert choose_cluster_version("Java Edition 26.2", []) == "Java Edition 26.2"
 
 
+def test_minecraft_probes_enforce_their_own_timeout(monkeypatch) -> None:
+    import asyncio
+
+    from shelley.services import minecraft
+
+    class HangingServer:
+        async def async_status(self):
+            await asyncio.sleep(60)
+
+    async def java_lookup(*_args, **_kwargs):
+        return HangingServer()
+
+    monkeypatch.setattr(minecraft.JavaServer, "async_lookup", java_lookup)
+    monkeypatch.setattr(
+        minecraft.BedrockServer,
+        "lookup",
+        lambda *_args, **_kwargs: HangingServer(),
+    )
+
+    async def run_probes():
+        return await asyncio.gather(
+            minecraft.minecraft_java_status("example.invalid:1", 0.01),
+            minecraft.minecraft_bedrock_status("example.invalid:1", 0.01),
+        )
+
+    java_result, bedrock_result = async_await(run_probes())
+    assert java_result == (False, None, None)
+    assert bedrock_result == (False, None, None)
+
+
+def test_minecraft_auto_probe_detects_java_and_bedrock_without_serial_wait(monkeypatch) -> None:
+    import asyncio
+
+    from shelley.config import ServerConfig
+    from shelley.services import minecraft
+
+    cancelled: list[str] = []
+
+    async def java_status(address, _timeout, _edition_override=None):
+        if address.startswith("java"):
+            return True, 4, "Java Edition 26.1.2"
+        return False, None, None
+
+    async def bedrock_status(address, _timeout):
+        if address.startswith("java"):
+            try:
+                await asyncio.sleep(60)
+            except asyncio.CancelledError:
+                cancelled.append(address)
+                raise
+        return True, 3, "Bedrock 1.21.93"
+
+    monkeypatch.setattr(minecraft, "minecraft_java_status", java_status)
+    monkeypatch.setattr(minecraft, "minecraft_bedrock_status", bedrock_status)
+
+    async def detect():
+        java = await minecraft.probe_server(
+            ServerConfig(placeholder="JAVA", kind="minecraft", address="java.example:1"),
+            1,
+        )
+        bedrock = await minecraft.probe_server(
+            ServerConfig(placeholder="BEDROCK", kind="minecraft", address="bedrock.example:2"),
+            1,
+        )
+        return java, bedrock
+
+    java_result, bedrock_result = async_await(detect())
+    assert java_result == (True, 4, "Java Edition 26.1.2")
+    assert bedrock_result == (True, 3, "Bedrock 1.21.93")
+    assert cancelled == ["java.example:1"]
+
+
+def test_status_collection_isolates_a_timed_out_server(monkeypatch) -> None:
+    import asyncio
+
+    from shelley.cogs import status
+    from shelley.config import ServerConfig
+
+    async def probe(server, _timeout):
+        if server.placeholder == "DOWN":
+            raise TimeoutError
+        return True, 4, "Java Edition 26.1.2"
+
+    monkeypatch.setattr(status, "probe_server", probe)
+    monkeypatch.setattr(status, "clear_starting_status", lambda *_args: None)
+    down = ServerConfig(
+        placeholder="DOWN",
+        kind="minecraft_java",
+        address="example.invalid:1",
+    )
+    online = ServerConfig(
+        placeholder="ONLINE",
+        kind="minecraft_java",
+        address="example.invalid:2",
+    )
+
+    async def collect():
+        return await asyncio.gather(
+            status.collect_server_snapshot(1, down, 0.01, set()),
+            status.collect_server_snapshot(1, online, 0.01, set()),
+        )
+
+    down_snapshot, online_snapshot = async_await(collect())
+    assert down_snapshot["status"] == ":red_circle:"
+    assert online_snapshot == {
+        "status": ":green_circle:",
+        "players": 4,
+        "version": "Java Edition 26.1.2",
+        "components": [],
+    }
+
+
+def test_recovery_control_cooldown_is_immediate_and_target_wide() -> None:
+    from shelley.actions import claim_recovery_cooldown
+
+    assert claim_recovery_cooldown(9001, "bm", 60, now=100)
+    assert not claim_recovery_cooldown(9001, "BM", 60, now=159.99)
+    assert claim_recovery_cooldown(9001, "bm", 60, now=160)
+    assert claim_recovery_cooldown(9002, "bm", 60, now=101)
+
+
+def test_recovery_control_cooldown_blocks_the_second_remote_command(
+    monkeypatch,
+) -> None:
+    from shelley import actions
+
+    events: list[object] = []
+    audit_entries: list[dict] = []
+
+    class CompatibleResult:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+        def __iter__(self):
+            return iter((self.returncode, self.stdout, self.stderr))
+
+    class Response:
+        async def defer(self, **kwargs):
+            events.append(("defer", kwargs))
+
+    class Interaction:
+        guild = SimpleNamespace(id=987654321)
+        user = SimpleNamespace(id=1, display_name="User")
+
+        def __init__(self):
+            self.response = Response()
+
+    config = SimpleNamespace(
+        recovery_control_cooldown_seconds=60,
+        recovery_log_path="unused",
+        recovery_log_retention_days=365,
+        runtime_guild_id=lambda: 987654321,
+    )
+    target = SimpleNamespace(reboot_command="noop")
+
+    async def run_ssh(_target, _command):
+        events.append("ssh")
+        return CompatibleResult()
+
+    async def write_log(_path, entry, *_args, **_kwargs):
+        audit_entries.append(entry)
+
+    monkeypatch.setattr(actions, "get_config", lambda: config)
+    monkeypatch.setattr(actions, "remote_target_cfg", lambda *_args: target)
+    monkeypatch.setattr(actions, "run_ssh_command", run_ssh)
+    monkeypatch.setattr(actions, "append_recovery_control_log", write_log)
+
+    async def run_twice():
+        for _ in range(2):
+            await actions.run_remote_action(
+                Interaction(),
+                "bm",
+                "reboot_command",
+                "Reboot",
+                notify=False,
+                require_admin=False,
+                recovery_button_id="bm_status_reboot",
+            )
+
+    async_await(run_twice())
+    assert events.count("ssh") == 1
+    assert [entry["dispatch_type"] for entry in audit_entries] == ["ssh_dispatched", "not_dispatched"]
+    assert [entry["status"] for entry in audit_entries] == ["ok", "cooldown"]
+    assert sum(event[0] == "defer" for event in events if isinstance(event, tuple)) == 2
+
+
+def test_recovery_dispatch_type_normalization_and_schema() -> None:
+    from shelley.db import schema_files
+    from shelley.services.recovery_log import (
+        RECOVERY_DISPATCH_NONE,
+        RECOVERY_DISPATCH_SSH,
+        normalize_recovery_dispatch_type,
+    )
+
+    assert normalize_recovery_dispatch_type(None, "ok", 0) == RECOVERY_DISPATCH_SSH
+    assert normalize_recovery_dispatch_type(None, "cooldown", None) == RECOVERY_DISPATCH_NONE
+    assert normalize_recovery_dispatch_type("ssh_dispatched", "cooldown", None) == RECOVERY_DISPATCH_SSH
+    schemas = dict(schema_files())
+    assert "002_recovery_dispatch" in schemas
+    assert "dispatch_type" in schemas["002_recovery_dispatch"]
+
+
 def test_points_store_award_cooldown_add_remove_reset_and_top() -> None:
     from shelley.cogs.points_state import PointsStore
 

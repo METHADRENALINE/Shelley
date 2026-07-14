@@ -1,15 +1,40 @@
 import logging
+import time
 
 import discord
 
 from .config import BotConfig, RemoteTargetConfig
 from .security import require_administrator
-from .services.recovery_log import append_recovery_control_log
+from .services.recovery_log import (
+    RECOVERY_DISPATCH_NONE,
+    RECOVERY_DISPATCH_SSH,
+    append_recovery_control_log,
+)
 from .services.remote import RemoteCommandResult, remote_target_cfg, run_ssh_command
 from .settings import get_config
 from .state import mark_starting_status
 
 logger = logging.getLogger(__name__)
+
+_recovery_cooldowns: dict[tuple[int, str], float] = {}
+
+
+def claim_recovery_cooldown(
+    guild_id: int,
+    target: str,
+    cooldown_seconds: float,
+    now: float | None = None,
+) -> bool:
+    current = time.monotonic() if now is None else float(now)
+    key = (int(guild_id), str(target).strip().lower())
+    expires_at = _recovery_cooldowns.get(key, 0.0)
+    if expires_at > current:
+        return False
+    for expired_key, expiry in tuple(_recovery_cooldowns.items()):
+        if expiry <= current:
+            _recovery_cooldowns.pop(expired_key, None)
+    _recovery_cooldowns[key] = current + max(0.0, float(cooldown_seconds))
+    return True
 
 
 async def defer_remote_interaction(interaction: discord.Interaction, notify: bool) -> None:
@@ -28,6 +53,7 @@ async def write_audit_event(
     status: str,
     recovery_button_id: str | None,
     recovery_button_label: str | None,
+    dispatch_type: str = RECOVERY_DISPATCH_NONE,
     returncode: int | None = None,
     error: str | None = None,
 ) -> None:
@@ -41,6 +67,7 @@ async def write_audit_event(
         "target": target,
         "action": action_name,
         "command_key": command_key,
+        "dispatch_type": dispatch_type,
         "status": status,
         "returncode": returncode,
         "error": error,
@@ -158,6 +185,7 @@ async def handle_remote_success(
         "ok",
         recovery_button_id,
         recovery_button_label,
+        dispatch_type=RECOVERY_DISPATCH_SSH,
         returncode=result.returncode,
     )
     mark_remote_starting_if_needed(interaction, config, target_cfg, command_key)
@@ -187,6 +215,7 @@ async def handle_remote_failure(
         "failed",
         recovery_button_id,
         recovery_button_label,
+        dispatch_type=RECOVERY_DISPATCH_SSH,
         returncode=result.returncode,
         error=error[:1500],
     )
@@ -213,8 +242,27 @@ async def run_remote_action(
     if require_admin and not await require_administrator(interaction):
         return
 
-    await defer_remote_interaction(interaction, notify)
     normalized_target = target.strip().lower()
+    guild_id = int(getattr(interaction.guild, "id", 0) or config.runtime_guild_id())
+    if recovery_button_id and not claim_recovery_cooldown(
+        guild_id,
+        normalized_target,
+        config.recovery_control_cooldown_seconds,
+    ):
+        await interaction.response.defer(thinking=False)
+        await write_audit_event(
+            interaction,
+            config,
+            normalized_target,
+            command_key,
+            action_name,
+            "cooldown",
+            recovery_button_id,
+            recovery_button_label,
+        )
+        return
+
+    await defer_remote_interaction(interaction, notify)
     target_cfg = remote_target_cfg(config, normalized_target)
     if target_cfg is None:
         await handle_unknown_target(
@@ -229,7 +277,31 @@ async def run_remote_action(
         )
         return
 
-    result = await run_ssh_command(target_cfg, command)
+    try:
+        result = await run_ssh_command(target_cfg, command)
+    except Exception as exc:
+        await write_audit_event(
+            interaction,
+            config,
+            normalized_target,
+            command_key,
+            action_name,
+            "dispatch_error",
+            recovery_button_id,
+            recovery_button_label,
+            error=type(exc).__name__,
+        )
+        logger.exception(
+            "remote action dispatch failed",
+            extra={"target": normalized_target, "action": action_name},
+        )
+        if notify:
+            await interaction.followup.send(
+                f"`{action_name}` could not be sent for `{normalized_target}`.",
+                ephemeral=True,
+            )
+        return
+
     if result.returncode == 0:
         await handle_remote_success(
             interaction,

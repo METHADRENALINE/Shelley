@@ -311,6 +311,7 @@ class BotConfig(BaseModel):
     state_path: str = "data/state.json"
     recovery_log_path: str = "data/recovery-controls.jsonl"
     recovery_log_retention_days: int = 365
+    recovery_control_cooldown_seconds: int = 60
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
     points: PointsConfig = Field(default_factory=PointsConfig)
     servers: list[ServerConfig] = Field(default_factory=list)
@@ -324,7 +325,13 @@ class BotConfig(BaseModel):
             raise ValueError("Discord IDs must not be negative")
         return int(value)
 
-    @field_validator("welcome_update_seconds", "welcome_presence_check_seconds", "update_seconds", "recovery_log_retention_days")
+    @field_validator(
+        "welcome_update_seconds",
+        "welcome_presence_check_seconds",
+        "update_seconds",
+        "recovery_log_retention_days",
+        "recovery_control_cooldown_seconds",
+    )
     @classmethod
     def validate_positive_int(cls, value: int) -> int:
         if int(value) < 1:
