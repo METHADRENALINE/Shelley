@@ -114,28 +114,85 @@ async def minecraft_java_status(
     timeout: float,
     edition_override: str | None = None,
 ) -> tuple[bool, int | None, str | None]:
-    try:
+    async def query_status():
         server = await JavaServer.async_lookup(address, timeout=timeout)
-        st = await server.async_status()
+        return await server.async_status()
+
+    try:
+        st = await asyncio.wait_for(
+            query_status(),
+            timeout=max(0.05, float(timeout)),
+        )
         online = getattr(st.players, "online", None)
         version = getattr(getattr(st, "version", None), "name", None)
         edition = str(edition_override or "").strip() or detect_java_modloader(st) or "Java Edition"
         return True, int(online) if online is not None else None, status_version_label(edition, version)
-    except Exception:
-        logger.debug("minecraft java probe failed", extra={"address": address}, exc_info=True)
+    except TimeoutError:
+        logger.debug("minecraft java probe timed out")
+        return False, None, None
+    except Exception as exc:
+        logger.debug(
+            "minecraft java probe failed",
+            extra={"exception_type": type(exc).__name__},
+        )
         return False, None, None
 
 
 async def minecraft_bedrock_status(address: str, timeout: float) -> tuple[bool, int | None, str | None]:
+    async def query_status():
+        server = await asyncio.to_thread(
+            BedrockServer.lookup,
+            address,
+            timeout=timeout,
+        )
+        return await server.async_status()
+
     try:
-        server = BedrockServer.lookup(address, timeout=timeout)
-        st = await server.async_status()
+        st = await asyncio.wait_for(
+            query_status(),
+            timeout=max(0.05, float(timeout)),
+        )
         online = getattr(st.players, "online", None)
         version = getattr(getattr(st, "version", None), "name", None)
         return True, int(online) if online is not None else None, status_version_label("Bedrock", version)
-    except Exception:
-        logger.debug("minecraft bedrock probe failed", extra={"address": address}, exc_info=True)
+    except TimeoutError:
+        logger.debug("minecraft bedrock probe timed out")
         return False, None, None
+    except Exception as exc:
+        logger.debug(
+            "minecraft bedrock probe failed",
+            extra={"exception_type": type(exc).__name__},
+        )
+        return False, None, None
+
+
+async def minecraft_auto_status(
+    address: str,
+    timeout: float,
+    edition_override: str | None = None,
+) -> tuple[bool, int | None, str | None]:
+    tasks = {
+        asyncio.create_task(minecraft_java_status(address, timeout, edition_override)),
+        asyncio.create_task(minecraft_bedrock_status(address, timeout)),
+    }
+    pending = set(tasks)
+    try:
+        while pending:
+            done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+            for task in done:
+                try:
+                    result = task.result()
+                except Exception:
+                    logger.exception("minecraft edition probe failed")
+                    continue
+                if result[0]:
+                    return result
+        return False, None, None
+    finally:
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 async def probe_server(server: ServerConfig, timeout: float) -> tuple[bool, int | None, str | None]:
@@ -154,15 +211,11 @@ async def probe_server(server: ServerConfig, timeout: float) -> tuple[bool, int 
     if kind in ("minecraft", "minecraft_auto", "minecraft_cluster"):
         if not server.address:
             return False, None, None
-
-        java_online, java_players, java_version = await minecraft_java_status(
+        return await minecraft_auto_status(
             server.address,
             timeout,
             server.version_edition_override,
         )
-        if java_online:
-            return java_online, java_players, java_version
-        return await minecraft_bedrock_status(server.address, timeout)
 
     return False, None, None
 

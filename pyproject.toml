@@ -48,6 +48,9 @@ exclude = ["\\.venv", "__pycache__", "\\.pytest_cache"]
 [tool.setuptools.packages.find]
 include = ["shelley*"]
 
+[tool.setuptools.package-data]
+"shelley.schema" = ["*.sql"]
+
 [build-system]
 requires = ["setuptools>=69"]
 build-backend = "setuptools.build_meta"

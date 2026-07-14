@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from ..db import apply_schema, get_database
+from ..services.recovery_log import normalize_recovery_dispatch_type
 from ..settings import load_config, reset_config_cache
 from ..state import set_star_forward, state_repository
 
@@ -154,13 +155,16 @@ def import_recovery(path: Path, guild_id: int, db) -> dict[str, int]:
             user = entry.get("user", {}) if isinstance(entry.get("user"), dict) else {}
             created_at_unix = int(entry.get("created_at_unix", 0) or 0)
             created_at = datetime.fromtimestamp(created_at_unix).astimezone() if created_at_unix else datetime.now().astimezone()
+            dispatch_type = normalize_recovery_dispatch_type(entry.get("dispatch_type"), entry.get("status"), entry.get("returncode"))
+            payload = dict(entry)
+            payload["dispatch_type"] = dispatch_type
             row = conn.execute(
                 """
                 INSERT INTO shelley_recovery_controls (
                     guild_id, created_at, created_at_unix, button_id, button_label, target, action, command_key,
-                    status, returncode, error, user_id, user_name, user_display_name, source_hash, payload
+                    dispatch_type, status, returncode, error, user_id, user_name, user_display_name, source_hash, payload
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (source_hash) WHERE source_hash IS NOT NULL DO NOTHING
                 RETURNING id
                 """,
@@ -173,6 +177,7 @@ def import_recovery(path: Path, guild_id: int, db) -> dict[str, int]:
                     entry.get("target"),
                     entry.get("action"),
                     entry.get("command_key"),
+                    dispatch_type,
                     entry.get("status"),
                     entry.get("returncode"),
                     entry.get("error"),
@@ -180,7 +185,7 @@ def import_recovery(path: Path, guild_id: int, db) -> dict[str, int]:
                     user.get("name"),
                     user.get("display_name"),
                     source_hash,
-                    db.jsonb(entry),
+                    db.jsonb(payload),
                 ),
             ).fetchone()
             if row:

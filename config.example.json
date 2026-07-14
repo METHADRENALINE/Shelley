@@ -21,6 +21,7 @@
   "state_path": "data/state.json",
   "recovery_log_path": "data/recovery-controls.jsonl",
   "recovery_log_retention_days": 365,
+  "recovery_control_cooldown_seconds": 60,
   "database": {
     "url": "postgresql:///shelley",
     "connect_timeout": 5,
