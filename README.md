@@ -1,12 +1,8 @@
 # Shelley
 
-Discord bot made for the METHADRENALINE ᵍʳᵒᵘᵖ server. It exists to keep the community Discord tidy, useful, and a little more alive while staying close to how the group actually plays and talks.
-
-It is a personal community bot, not a packaged product and not a ready setup for other communities. The code is shaped around private group, its Discord channels, and its game servers habits. Changes are made when the community needs them, not to support every possible Discord server.
+Discord bot made for the METHADRENALINE ᵍʳᵒᵘᵖ server. It exists to keep the community Discord tidy, useful, and a little more alive while staying close to how the group actually plays and talks. It is a personal community bot, not a packaged product and not a ready setup for other communities. Changes are made when the community needs them, not to support every possible Discord server.
 
 You can review it, ofc you can do whatever you want with the code and modify it to fit your own needs. :D
-
-You can actually see some parts of our Discord server here, like the welcome message, our game servers (just their name you know), and stuff like that. You won't be able to connect to game servers if you're not on the whitelist though. 
 
 You’ll never know the full community lineup or real details about its members, IPs, unless you’ve actually been with us. :)
 
