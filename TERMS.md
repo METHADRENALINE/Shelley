@@ -1,4 +1,4 @@
-# [Shelley](https://github.com/METHADRENALINE/Shelley) Terms of Use
+# Shelley Terms of Use
 
 
 Shelley is a Discord bot whose official instance is reserved exclusively for the METHADRENALINE ᵍʳᵒᵘᵖ community.
