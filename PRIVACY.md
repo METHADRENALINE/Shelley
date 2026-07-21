@@ -1,4 +1,4 @@
-# [Shelley](https://github.com/METHADRENALINE/Shelley) Privacy Policy
+# Shelley Privacy Policy
 
 This Policy explains how the official Shelley instance handles Discord data. The official instance is reserved exclusively for the METHADRENALINE ᵍʳᵒᵘᵖ community.
 
