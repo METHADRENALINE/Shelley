@@ -4,8 +4,6 @@ Discord bot made for the METHADRENALINE ᵍʳᵒᵘᵖ server. It exists to keep
 
 You can review it, ofc you can do whatever you want with the code and modify it to fit your own needs. :D
 
-You’ll never know the full community lineup or real details about its members, IPs, unless you’ve actually been with us.
-
 # What Shelley does for the server
 
 ## Welcome guide
