@@ -258,6 +258,42 @@ def test_notify_uses_multiline_modal_and_attachment_batches() -> None:
     assert "on_message" not in source
 
 
+def test_notify_preserves_unicode_and_resolves_available_custom_emojis() -> None:
+    from shelley.cogs.admin import resolve_notify_emojis
+
+    class Emoji:
+        def __init__(self, name: str, emoji_id: int, rendered: str, *, available: bool = True, usable: bool = True) -> None:
+            self.name = name
+            self.id = emoji_id
+            self.rendered = rendered
+            self.available = available
+            self.usable = usable
+
+        def is_usable(self) -> bool:
+            return self.usable
+
+        def __str__(self) -> str:
+            return self.rendered
+
+    emojis = [
+        Emoji("static", 1, "<:static:1>"),
+        Emoji("animated", 2, "<a:animated:2>"),
+        Emoji("unavailable", 3, "<:unavailable:3>", available=False),
+        Emoji("restricted", 4, "<:restricted:4>", usable=False),
+    ]
+    content = (
+        "Unicode 😀 👩‍👩‍👧‍👦\n"
+        "Custom :static: :animated: :missing: :unavailable: :restricted:\n"
+        "Existing <:raw:10> <a:raw_animated:11> and <t:1710000000:R>"
+    )
+
+    assert resolve_notify_emojis(content, emojis) == (
+        "Unicode 😀 👩‍👩‍👧‍👦\n"
+        "Custom <:static:1> <a:animated:2> :missing: :unavailable: :restricted:\n"
+        "Existing <:raw:10> <a:raw_animated:11> and <t:1710000000:R>"
+    )
+
+
 def test_remote_command_builder_uses_safe_ssh_options() -> None:
     from shelley.config import BotConfig, RemoteTargetConfig
     from shelley.services.remote import build_ssh_command, parse_remote_result, remote_host_argument
