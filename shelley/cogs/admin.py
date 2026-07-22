@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import logging
+import re
 import shutil
 import tempfile
 import time
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -19,6 +21,8 @@ logger = logging.getLogger(__name__)
 
 DISCORD_FILES_PER_MESSAGE = 10
 NOTIFY_SESSION_TTL_SECONDS = 1800
+NOTIFY_EMOJI_SHORTCODE_PATTERN = re.compile(r"(?<![\w\\]):([A-Za-z0-9_]{2,32}):(?!\w)")
+DISCORD_MARKUP_PATTERN = re.compile(r"<[^<>\n]+>")
 
 
 @dataclass
@@ -58,6 +62,37 @@ class NotifySession:
 def notify_message_content(text: str) -> str:
     value = str(text).strip()
     return value if value else "\u200b"
+
+
+def resolve_notify_emojis(text: str, emojis: Iterable[object]) -> str:
+    emoji_by_name: dict[str, str] = {}
+    for emoji in emojis:
+        name = str(getattr(emoji, "name", "") or "")
+        emoji_id = getattr(emoji, "id", None)
+        if not name or emoji_id is None or not bool(getattr(emoji, "available", True)):
+            continue
+        is_usable = getattr(emoji, "is_usable", None)
+        if callable(is_usable) and not is_usable():
+            continue
+        emoji_by_name.setdefault(name, str(emoji))
+
+    if not emoji_by_name:
+        return text
+
+    def replace_shortcodes(value: str) -> str:
+        return NOTIFY_EMOJI_SHORTCODE_PATTERN.sub(
+            lambda match: emoji_by_name.get(match.group(1), match.group(0)),
+            value,
+        )
+
+    resolved: list[str] = []
+    position = 0
+    for match in DISCORD_MARKUP_PATTERN.finditer(text):
+        resolved.append(replace_shortcodes(text[position : match.start()]))
+        resolved.append(match.group(0))
+        position = match.end()
+    resolved.append(replace_shortcodes(text[position:]))
+    return "".join(resolved)
 
 
 def notify_attachment_batches(
@@ -299,14 +334,18 @@ class AdminCog(commands.Cog):
                 await interaction.edit_original_response(content="notify_channel_id must point to a text channel.", view=None)
                 return
 
+            content = resolve_notify_emojis(
+                session.content,
+                (*channel.guild.emojis, *self.bot.emojis),
+            )
             batches = notify_attachment_batches(session.attachments)
             if not batches:
-                await channel.send(content=session.content)
+                await channel.send(content=content)
             else:
                 for index, batch in enumerate(batches):
                     files = [attachment.to_file() for attachment in batch]
                     await channel.send(
-                        content=session.content if index == 0 else None,
+                        content=content if index == 0 else None,
                         files=files,
                     )
 
