@@ -2,7 +2,7 @@
 
 Discord bot made for the METHADRENALINE ᵍʳᵒᵘᵖ server. It exists to keep the community Discord tidy, useful, and a little more alive while staying close to how the group actually plays and talks. It is a personal community bot, not a packaged product and not a ready setup for other communities. Changes are made when the community needs them, not to support every possible Discord server.
 
-You can review it, ofc you can do whatever you want with the code and modify it to fit your own needs. :D
+You can review it, ofc you can do whatever you want with the code and modify it to fit your own needs.
 
 # What Shelley does for the server
 
