@@ -6,6 +6,7 @@ from .bot import ShelleyBot
 from .config import ConfigError
 from .db import DatabaseUnavailable, apply_schema, get_database
 from .settings import config_path, env_name, load_config, reset_config_cache
+from .trademarks.indexing import TrademarkIndexConflict, refresh_trademark_index
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +46,13 @@ def main() -> None:
         applied = apply_schema(db)
         if applied:
             logger.info("applied database schema", extra={"schema_versions": applied})
-    except DatabaseUnavailable as e:
+        refreshed_trademarks = refresh_trademark_index(db)
+        if refreshed_trademarks:
+            logger.info(
+                "refreshed trademark comparison index",
+                extra={"trademark_count": refreshed_trademarks},
+            )
+    except (DatabaseUnavailable, TrademarkIndexConflict) as e:
         raise SystemExit(str(e)) from e
 
     ShelleyBot(config=cfg).run(token, log_handler=None)
