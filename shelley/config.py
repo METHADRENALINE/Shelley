@@ -4,7 +4,14 @@ import os
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 TOKEN_PLACEHOLDER = "replace-with-your-discord-bot-token"
 
@@ -162,6 +169,8 @@ class PointsLeaderboardConfig(BaseModel):
     text_color: int = 0x5865F2
     voice_color: int = 0x57F287
     placeholder_text: str = ""
+    text_footer: str = ""
+    voice_footer: str = ""
 
     @field_validator("channel_id")
     @classmethod
@@ -194,6 +203,116 @@ class PointsConfig(BaseModel):
     text: PointsTextConfig = Field(default_factory=PointsTextConfig)
     voice: PointsVoiceConfig = Field(default_factory=PointsVoiceConfig)
     leaderboard: PointsLeaderboardConfig = Field(default_factory=PointsLeaderboardConfig)
+
+
+class TrademarkGuildConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    channel_id: int
+    automatic_patents: bool = True
+    inventory_limit: int = 100
+    patent_limit: int = 30
+    patent_window_hours: float = 24
+    patent_cooldown_seconds: float = 10
+    max_name_characters: int = 50
+    max_spaces: int = 10
+    showcase_limit: int = 5
+    active_exchange_limit: int = 10
+    active_gift_limit: int = 10
+    exchange_expiry_hours: float = 24
+    gift_expiry_hours: float = 72
+    confirmation_timeout_seconds: float = 300
+    inventory_page_size: int = 25
+    all_trademarks_page_size: int = 25
+    requests_page_size: int = 25
+    history_page_size: int = 5
+    search_result_limit: int = 25
+
+    @field_validator("channel_id")
+    @classmethod
+    def validate_channel_id(cls, value: int) -> int:
+        if int(value) <= 0:
+            raise ValueError("channel_id must be a positive Discord snowflake")
+        return int(value)
+
+    @field_validator(
+        "inventory_limit",
+        "patent_limit",
+        "max_name_characters",
+        "showcase_limit",
+        "active_exchange_limit",
+        "active_gift_limit",
+        "inventory_page_size",
+        "all_trademarks_page_size",
+        "requests_page_size",
+        "history_page_size",
+        "search_result_limit",
+    )
+    @classmethod
+    def validate_positive_limits(cls, value: int) -> int:
+        if int(value) < 1:
+            raise ValueError("limit values must be at least 1")
+        return int(value)
+
+    @field_validator("max_spaces")
+    @classmethod
+    def validate_max_spaces(cls, value: int) -> int:
+        if int(value) < 0:
+            raise ValueError("max_spaces must not be negative")
+        return int(value)
+
+    @field_validator(
+        "patent_window_hours",
+        "patent_cooldown_seconds",
+        "exchange_expiry_hours",
+        "gift_expiry_hours",
+        "confirmation_timeout_seconds",
+    )
+    @classmethod
+    def validate_positive_durations(cls, value: float) -> float:
+        if float(value) <= 0:
+            raise ValueError("duration values must be greater than 0")
+        return float(value)
+
+    @model_validator(mode="after")
+    def validate_discord_component_limits(self) -> TrademarkGuildConfig:
+        if self.showcase_limit > 5:
+            raise ValueError("showcase_limit must not exceed 5")
+        if self.max_name_characters > 100:
+            raise ValueError("max_name_characters must not exceed 100")
+        for name in (
+            "inventory_page_size",
+            "all_trademarks_page_size",
+            "requests_page_size",
+            "search_result_limit",
+        ):
+            if int(getattr(self, name)) > 25:
+                raise ValueError(f"{name} must not exceed 25")
+        if self.history_page_size > 10:
+            raise ValueError("history_page_size must not exceed 10")
+        if self.confirmation_timeout_seconds > 900:
+            raise ValueError("confirmation_timeout_seconds must not exceed 900")
+        return self
+
+
+class TrademarksConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    guilds: dict[int, TrademarkGuildConfig] = Field(default_factory=dict)
+
+    @field_validator("guilds")
+    @classmethod
+    def validate_guilds(cls, value: dict[int, TrademarkGuildConfig]) -> dict[int, TrademarkGuildConfig]:
+        for guild_id in value:
+            if int(guild_id) <= 0:
+                raise ValueError("trademark guild IDs must be positive Discord snowflakes")
+        return {int(key): item for key, item in value.items()}
+
+    def for_guild(self, guild_id: int) -> TrademarkGuildConfig | None:
+        if not self.enabled:
+            return None
+        return self.guilds.get(int(guild_id))
 
 
 class ServerComponentConfig(BaseModel):
@@ -314,11 +433,18 @@ class BotConfig(BaseModel):
     recovery_control_cooldown_seconds: int = 60
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
     points: PointsConfig = Field(default_factory=PointsConfig)
+    trademarks: TrademarksConfig = Field(default_factory=TrademarksConfig)
     servers: list[ServerConfig] = Field(default_factory=list)
     remote_targets: dict[str, RemoteTargetConfig] = Field(default_factory=dict)
     status_messages: list[StatusMessageConfig] = Field(default_factory=list)
 
-    @field_validator("client_id", "dev_guild_id", "notify_channel_id", "welcome_channel_id", "status_channel_id")
+    @field_validator(
+        "client_id",
+        "dev_guild_id",
+        "notify_channel_id",
+        "welcome_channel_id",
+        "status_channel_id",
+    )
     @classmethod
     def validate_snowflake(cls, value: int) -> int:
         if int(value) < 0:
@@ -376,6 +502,8 @@ class BotConfig(BaseModel):
                 errors.append("points.voice.channel_ids must contain at least one channel")
             if self.points.leaderboard.enabled and self.points.leaderboard.channel_id <= 0:
                 errors.append("points.leaderboard.channel_id must be configured")
+        if self.trademarks.enabled and not self.trademarks.guilds:
+            errors.append("trademarks.guilds must contain at least one configured Discord server")
         if not self.servers:
             errors.append("servers must contain at least one server")
         if not self.status_messages:

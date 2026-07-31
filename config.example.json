@@ -69,6 +69,32 @@
       "placeholder_text": ""
     }
   },
+  "trademarks": {
+    "enabled": false,
+    "guilds": {
+      "111111111111111111": {
+        "channel_id": 222222222222222222,
+        "automatic_patents": true,
+        "inventory_limit": 100,
+        "patent_limit": 30,
+        "patent_window_hours": 24,
+        "patent_cooldown_seconds": 10,
+        "max_name_characters": 50,
+        "max_spaces": 10,
+        "showcase_limit": 5,
+        "active_exchange_limit": 10,
+        "active_gift_limit": 10,
+        "exchange_expiry_hours": 24,
+        "gift_expiry_hours": 72,
+        "confirmation_timeout_seconds": 300,
+        "inventory_page_size": 25,
+        "all_trademarks_page_size": 25,
+        "requests_page_size": 25,
+        "history_page_size": 5,
+        "search_result_limit": 25
+      }
+    }
+  },
   "servers": [
     {
       "kind": "minecraft",

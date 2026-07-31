@@ -10,16 +10,17 @@ dependencies = [
   "discord.py[voice]>=2.7,<3",
   "discord-ext-voice-recv==0.5.2a179",
   "mcstatus>=13,<14",
-  "Pillow>=10,<12",
+  "Pillow>=12.3,<13",
   "pydantic>=2.7,<3",
   "psycopg[binary,pool]>=3.2,<4",
   "python-dotenv>=1,<2",
+  "regex>=2024.5,<2027",
 ]
 
 [project.optional-dependencies]
 dev = [
   "mypy>=1.10,<2",
-  "pytest>=8,<9",
+  "pytest>=9.0.3,<10",
   "ruff>=0.5,<1",
 ]
 
@@ -50,6 +51,7 @@ include = ["shelley*"]
 
 [tool.setuptools.package-data]
 "shelley.schema" = ["*.sql"]
+"shelley.trademarks.data" = ["*.txt"]
 
 [build-system]
 requires = ["setuptools>=69"]
