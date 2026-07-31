@@ -4,9 +4,15 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.pyright/
+.hypothesis/
 .coverage
+.coverage.*
+coverage.xml
 htmlcov/
 *.egg-info/
+build/
+dist/
 
 .venv/
 venv/
@@ -24,7 +30,10 @@ secrets/
 
 .DS_Store
 Thumbs.db
+*.log
+*.tmp
+*.bak
+*.swp
+*~
 .vscode/
 .idea/
-build/
-dist/
