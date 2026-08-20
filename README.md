@@ -107,13 +107,13 @@ Events, failed attempts, releases, and completed exchanges can also appear publi
 
 ## Welcome guide
 
-Shelley keeps a single welcome message in the configured welcome channel. The message is built from a JSON template, so the actual text and embeds can be edited without changing the bot code.
+Shelley keeps a single welcome message in the welcome channel. The message is built from a JSON template, so the actual text and embeds can be edited without changing the bot code.
 
 When the template changes, Shelley updates the Discord message. If the message was deleted, Shelley recreates it.
 
 ## Announcements
 
-An admin can send and edit text to the configured notification channel and attach files. Technically, it doesn’t really make sense, ik that, it does give the server some personality though.
+An admin can send text to the notification channel and attach files, edit them. Technically, it doesn’t really make sense, ik that, it does give the server some personality though.
 
 ## Star messages
 
