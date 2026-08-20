@@ -27,7 +27,7 @@ Voice activity works a little differently. Being connected to a voice channel is
 Once a member has been actively speaking for the configured interval, Shelley can award voice points and begins waiting for the next interval. The speaking state comes directly from Discord.
 
 > [!CAUTION]
-> Shelley does not record audio, save it, transcribe it, or inspect what anyone is saying. It only needs to know that speaking is happening.
+> Shelley does not record audio, save it, transcribe it, or inspect what anyone is saying. It only needs to know that mic activity is happening. So yeah, if your mom starts talking in the bg and your sensitive condenser picks it up, congratulations on the points, you damn cheater :D
 
 ## Welcome guide
 
