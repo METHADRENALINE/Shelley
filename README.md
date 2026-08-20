@@ -27,7 +27,9 @@ In practice, star messages work like a community archive. Members decide what de
 ## Game servers status icons
 
 🟢 means the server is online and responding normally. Players can join, and Shelley can show the current player count.
+
 🟡 means the server is not fully available yet. It may be starting, stuck during startup, unstable connection, or only partly reachable.
+
 🔴 means the server is offline or not responding. If recovery controls are enabled, Shelley can show emergency buttons for starting or restarting the server.
 
 ## Game servers recovery controls
