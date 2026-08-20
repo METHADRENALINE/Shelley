@@ -32,7 +32,7 @@ Shelley keeps a record of recovery actions and their results for the configured 
 
 Shelley keeps track of activity around the server through separate text and voice points. People who spend time talking and participating gradually build up a score without having to run commands or do anything specifically for the bot.
 
-Text and voice activity are counted independently, with their own balances and leaderboards. The timing can be adjusted for each server.
+Text and voice activity are counted independently, with their own balances and leaderboards. The timing can be adjusted for each server. Points are tied to the member and stored independently from their current server membership. Leaving the server does not erase anything. If the same person joins again later, their previous text and voice points are still there and they continue from the same totals.
 
 Admins can correct the numbers when necessary. They can add or remove points from a member, reset text or voice points separately, or clear the whole points table. This is mostly there for maintenance, migrations, and experiments that went a little too well (yeah, this actually comes from bitter experience).
 
@@ -50,6 +50,12 @@ After enough active speaking, Shelley can award voice points and starts waiting 
 
 > [!CAUTION]
 > Shelley does not record audio, save it, transcribe it, or inspect what anyone is saying. It only needs to know that mic activity is happening. So yeah, if your mom talks in the background and your sensitive condenser picks it up, congrats on the points, you damn cheater :D
+
+### Leaderboards
+
+Shelley keeps one leaderboard message in the points channel. Text and voice activity have separate boards, both showing the top ten members.
+
+The boards use current server display names when possible and update in real time as point data changes.
 
 ## Trademarks
 
