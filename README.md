@@ -6,6 +6,29 @@ You can review it, ofc you can do whatever you want with the code and modify it 
 
 # What Shelley does for the server
 
+## Activity points
+
+Shelley keeps track of activity around the server through separate text and voice points. People who spend time talking and participating gradually build up a score without having to run commands or do anything specifically for the bot.
+
+Text and voice activity are counted independently, with their own balances and leaderboards. The timing is configurable for each server.
+
+Admins can correct the numbers when necessary. They can add or remove points from a member, reset text or voice points separately, or clear the whole points table. This is mostly there for maintenance, migrations, and experiments that went a little too well (yeah, this actually comes from bitter experience).
+
+### Text points
+
+Text points come naturally from conversation. When a member sends a message in one of the configured channels, Shelley can give them points. After that, there is a configured interval before another message from the same member can count again. This makes ordinary conversation useful while making message spam a rather inefficient career choice.
+
+Shelley also remembers how far it has already processed a channel and periodically looks through recent message history. If the bot disconnects for a while or restarts, activity that happened during that gap can still be picked up instead of simply disappearing.
+
+### Voice points
+
+Voice activity works a little differently. Being connected to a voice channel is not enough by itself. Shelley looks for actual speaking activity and starts counting when there is someone else in the channel who can reasonably hear it. Staying muted, sitting alone, or quietly occupying a channel for several hours will not slowly generate points.
+
+Once a member has been actively speaking for the configured interval, Shelley can award voice points and begins waiting for the next interval. The speaking state comes directly from Discord.
+
+> [!CAUTION]
+> Shelley does not record audio, save it, transcribe it, or inspect what anyone is saying. It only needs to know that speaking is happening.
+
 ## Welcome guide
 
 Shelley keeps a single welcome message in the configured welcome channel. The message is built from a JSON template, so the actual text and embeds can be edited without changing the bot code.
