@@ -111,7 +111,7 @@ An admin can send and edit text to the configured notification channel and attac
 
 ## Star messages
 
-Shelley watches selected chat channels for ⭐ reactions. When a message gets 3 stars from members (bot reactions don’t count), Shelley copies it to the star channel, keeping memorable community moments separate from regular pinned messages.
+Shelley watches configured chat channels for ⭐ reactions. When a message gets 3 stars from members (bot reactions don’t count), Shelley copies it to the star channel, keeping memorable community moments separate from regular pinned messages.
 
 If the message later drops below the required number of stars, or if the original message is deleted, Shelley removes the saved copy from the star channel too.
 
