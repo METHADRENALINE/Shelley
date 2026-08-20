@@ -55,7 +55,7 @@ After enough active speaking, Shelley can award voice points and starts waiting 
 
 Shelley has a community trademark system for names, phrases, emoji, and pretty much anything people decide is important enough to claim as theirs.
 
-The whole thing actually started as a joke. One person in the community asked something along the lines of, "Guys, imagine if I could patent the word air and you would only be allowed to breathe when I let you." Apparently, that was enough of an idea to build an entire system around.
+The whole thing actually started as a joke. One person in the community asked something along the lines of "guys, imagine if I could patent the word «air» and you would only be allowed to breathe when I let you." Apparently, that was enough of an idea to build an entire goat system around.
 
 Every trademark has an owner and keeps its history over time. Members can collect trademarks, put favorites on display, give them away, trade them with each other, or release something back into the wild when the joke has finally run its course.
 
