@@ -40,4 +40,8 @@ Recovery buttons for the emergency case where a game server has stopped and play
 
 When the server is offline, Shelley can show a Start button. When the server is offline or marked as starting, it can show Restart system button. These controls are only for unplanned outages.
 
+Spammed recovery actions for the same target are protected by a cooldown. This prevents several people from sending Start or Restart system commands to the same server at almost the same time.
+
 Admins also have slash commands for the same kind of remote action.
+
+Shelley keeps a record of recovery actions and their results for the configured retention period. This includes actions started from recovery buttons as well as admin commands.
