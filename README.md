@@ -14,7 +14,7 @@ When the template changes, Shelley updates the Discord message. If the message w
 
 ## Announcements
 
-An admin can send text to the configured notification channel and attach files. Technically, it doesn’t really make sense, ik that, it does give the server some personality though.
+An admin can send and edit text to the configured notification channel and attach files. Technically, it doesn’t really make sense, ik that, it does give the server some personality though.
 
 ## Star messages
 
@@ -24,7 +24,9 @@ If the message later drops below the required number of stars, or if the origina
 
 In practice, star messages work like a community archive. Members decide what deserves to stay visible, Shelley just handles the boring part in the background.
 
-## Game servers status icons
+## Game servers
+
+### Status icons
 
 🟢 means the server is online and responding normally. Players can join, and Shelley can show the current player count.
 
@@ -32,7 +34,7 @@ In practice, star messages work like a community archive. Members decide what de
 
 🔴 means the server is offline or not responding. If recovery controls are enabled, Shelley can show emergency buttons for starting or restarting the server.
 
-## Game servers recovery controls
+## Game servers Recovery controls
 
 Recovery buttons for the emergency case where a game server has stopped and players simply want to bring it back without calling an admin.
 
