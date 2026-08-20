@@ -34,7 +34,7 @@ In practice, star messages work like a community archive. Members decide what de
 
 🔴 means the server is offline or not responding. If recovery controls are enabled, Shelley can show emergency buttons for starting or restarting the server.
 
-### Game servers Recovery controls
+### Recovery controls
 
 Recovery buttons for the emergency case where a game server has stopped and players simply want to bring it back without calling an admin.
 
