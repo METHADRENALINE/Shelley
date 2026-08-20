@@ -10,13 +10,13 @@ You can review it, ofc you can do whatever you want with the code and modify it 
 
 Shelley keeps track of activity around the server through separate text and voice points. People who spend time talking and participating gradually build up a score without having to run commands or do anything specifically for the bot.
 
-Text and voice activity are counted independently, with their own balances and leaderboards. The timing is configurable for each server.
+Text and voice activity are counted independently, with their own balances and leaderboards. The timing can be adjusted for each server.
 
 Admins can correct the numbers when necessary. They can add or remove points from a member, reset text or voice points separately, or clear the whole points table. This is mostly there for maintenance, migrations, and experiments that went a little too well (yeah, this actually comes from bitter experience).
 
 ### Text points
 
-Text points come naturally from conversation. When a member sends a message in one of the configured channels, Shelley can give them points. After that, there is a configured interval before another message from the same member can count again. This makes ordinary conversation useful while making message spam a rather inefficient career choice.
+Text points come naturally from conversation. When a member sends a message in one of the selected channels, Shelley can give them points. After that, another message from the same member will not count for a while. This keeps normal conversation rewarding without making spam useful for farming points.
 
 Shelley also remembers how far it has already processed a channel and periodically looks through recent message history. If the bot disconnects for a while or restarts, activity that happened during that gap can still be picked up instead of simply disappearing.
 
@@ -24,7 +24,7 @@ Shelley also remembers how far it has already processed a channel and periodical
 
 Voice activity works a little differently. Being connected to a voice channel is not enough by itself. Shelley looks for actual speaking activity and starts counting when there is someone else in the channel who can reasonably hear it. Staying muted, sitting alone, or quietly occupying a channel for several hours will not slowly generate points.
 
-Once a member has been actively speaking for the configured interval, Shelley can award voice points and begins waiting for the next interval. The speaking state comes directly from Discord.
+After enough active speaking, Shelley can award voice points and starts waiting before counting again. The speaking state comes directly from Discord.
 
 > [!CAUTION]
 > Shelley does not record audio, save it, transcribe it, or inspect what anyone is saying. It only needs to know that mic activity is happening. So yeah, if your mom talks in the background and your sensitive condenser picks it up, congrats on the points, you damn cheater :D
@@ -37,15 +37,15 @@ The whole thing actually started as a joke. One person in the community asked so
 
 Every trademark has an owner and keeps its history over time. Members can collect trademarks, put favorites on display, give them away, trade them with each other, or release something back into the wild when the joke has finally run its course.
 
-The main `/tm` interface lives in the configured trademark channel and is private to the member using it. It is the central place for patents, inventories, showcases, search, trades, gifts, and requests, without filling the channel with menus every time somebody wants to check their collection.
+The main `/tm` interface lives in the trademark channel and is private to the member using it. It is the central place for patents, inventories, showcases, search, trades, gifts, and requests, without filling the channel with menus every time somebody wants to check their collection.
 
-Admins can release another member patent when necessary. Patent limits, inventory size, showcase size, request limits, request lifetime, and timing are configurable for each server.
+Admins can release another member patent when necessary. Limits for patents, inventories, showcases, requests, and their lifetime can be adjusted for each server.
 
 ### Patents
 
 A member can create a patent directly from the `/tm` interface.
 
-When automatic patents are enabled, there is an even simpler option. A complete single line message ending with `™` becomes a patent attempt. This works from any channel on the configured server, so sometimes the entire patent process is just saying something questionable and putting a trademark symbol after it.
+When automatic patents are enabled, there is an even simpler option. A complete single line message ending with `™` becomes a patent attempt. This works from any channel on the server, so sometimes the entire patent process is just saying something questionable and putting a trademark symbol after it.
 
 There is also a message action for patenting your own message from the trademark channel. Shelley asks for confirmation before actually claiming it, because accidentally patenting your own typo would be a remarkably permanent way to remember it.
 
@@ -76,7 +76,6 @@ Trademarks keep their history instead of forgetting everything whenever ownershi
 Patents, releases, gifts, and exchanges are recorded, so a trademark can have an actual trail from its original patent through whoever managed to acquire it afterward.
 
 Events, failed attempts, releases, and completed exchanges can also appear publicly in the trademark channel. The management interface itself stays private, while the interesting consequences can still become everybody else's business. :)
-
 
 ## Welcome guide
 
