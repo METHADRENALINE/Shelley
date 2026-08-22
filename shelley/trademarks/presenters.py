@@ -383,16 +383,17 @@ def patent_failure_announcement(
     actor_name: str,
     present_ids: Collection[int],
 ) -> discord.Embed:
-    actor = member_name(actor_id, actor_name, present_ids)
     if trademark.owner_id == actor_id:
-        description = f"{actor} такой глупец, что решил подать патент на свою же трейд марку {trademark_name(trademark)}!"
+        reason = "Эта трейд марка уже запатентована на его же имя"
     else:
         owner = member_name(trademark.owner_id, trademark.owner_name, present_ids)
-        description = f"{actor} попытался запатентовать {trademark_name(trademark)}, но эта трейд марка уже принадлежит {owner}!"
-    return discord.Embed(
-        title="Неудачная попытка патента",
-        description=description,
-        color=ERROR_COLOR,
+        reason = f"Эта трейд марка уже принадлежит {owner}"
+    return _patent_failure_embed(
+        trademark_name(trademark),
+        actor_id,
+        actor_name,
+        reason,
+        present_ids,
     )
 
 
@@ -403,12 +404,28 @@ def patent_rejection_announcement(
     reason: str,
     present_ids: Collection[int],
 ) -> discord.Embed:
+    return _patent_failure_embed(
+        attempted_name,
+        actor_id,
+        actor_name,
+        reason,
+        present_ids,
+    )
+
+
+def _patent_failure_embed(
+    attempted_name: str,
+    actor_id: int,
+    actor_name: str,
+    reason: str,
+    present_ids: Collection[int],
+) -> discord.Embed:
     actor = member_name(actor_id, actor_name, present_ids)
     attempted = safe_display(attempted_name, 500)
-    explanation = str(reason).rstrip(".!")
+    explanation = str(reason).strip().rstrip(".!")
     return discord.Embed(
-        title="Патент не оформлен",
-        description=(f"{actor} попытался запатентовать {attempted}, но патент не был оформлен!\n**Причина**\n{explanation}!"),
+        title="Неудачная попытка патента",
+        description=(f"{actor} попытался запатентовать {attempted}, но не судьба.\n\n**Причина**\n{explanation}!"),
         color=ERROR_COLOR,
     )
 
