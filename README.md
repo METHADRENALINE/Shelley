@@ -105,16 +105,6 @@ Patents, releases, gifts, and exchanges are recorded, so a trademark can have an
 
 Events, failed attempts, releases, and completed exchanges can also appear publicly in the trademark channel. The management interface itself stays private, while the interesting consequences can still become everybody else's business. :)
 
-## Welcome guide
-
-Shelley keeps a single welcome message in the welcome channel. The message is built from a JSON template, so the actual text and embeds can be edited without changing the bot code.
-
-When the template changes, Shelley updates the Discord message. If the message was deleted, Shelley recreates it.
-
-## Announcements
-
-An admin can send text to the notification channel and attach files, edit them. Technically, it doesn’t really make sense, ik that, it does give the server some personality though.
-
 ## Star messages
 
 Shelley watches configured chat channels for ⭐ reactions. When a message gets 3 stars from members (bot reactions don’t count), Shelley copies it to the star channel, keeping memorable community moments separate from regular pinned messages.
@@ -122,3 +112,13 @@ Shelley watches configured chat channels for ⭐ reactions. When a message gets 
 If the message later drops below the required number of stars, or if the original message is deleted, Shelley removes the saved copy from the star channel too.
 
 In practice, star messages work like a community archive. Members decide what deserves to stay visible, Shelley just handles the boring part in the background.
+
+## Announcements
+
+An admin can send text to the notification channel and attach files, edit them. Technically, it doesn’t really make sense, ik that, it does give the server some personality though.
+
+## Welcome guide
+
+Shelley keeps a single welcome message in the welcome channel. The message is built from a JSON template, so the actual text and embeds can be edited without changing the bot code.
+
+When the template changes, Shelley updates the Discord message. If the message was deleted, Shelley recreates it.
