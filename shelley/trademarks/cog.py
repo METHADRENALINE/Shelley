@@ -400,13 +400,13 @@ class TrademarkCog(commands.Cog):
                 ),
             )
             return
-        title, description = claim_rejection_copy(result, config)
+        _, description = claim_rejection_copy(result, config)
         await self.reject_automatic_claim(
             message,
             guild_id,
             config,
             attempted_name,
-            f"{title}! {description}",
+            description,
         )
 
     async def show_main(self, interaction: discord.Interaction) -> None:

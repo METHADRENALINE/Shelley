@@ -372,9 +372,56 @@ def test_automatic_patent_rejects_invalid_name_publicly() -> None:
 
     assert reactions == ["❌"]
     assert len(published) == 1
-    assert published[0].title == "Патент не оформлен"
+    assert published[0].title == "Неудачная попытка патента"
     assert "<@2>" in str(published[0].description)
     assert "невидимый символ" in str(published[0].description)
+    assert ", но не судьба.\n\n**Причина**\n" in str(published[0].description)
+    assert str(published[0].description).endswith("!")
+
+
+def test_automatic_patent_rejection_does_not_duplicate_private_title() -> None:
+    from shelley.trademarks import cog as cog_module
+
+    config = guild_config(channel_id=111111111111111111)
+    cog = object.__new__(cog_module.TrademarkCog)
+    cog.config = SimpleNamespace(trademarks=TrademarksConfig(enabled=True, guilds={1: config}))
+    cog.service = SimpleNamespace(claim=object())
+    reactions: list[str] = []
+    published: list[discord.Embed] = []
+
+    async def call(_method: object, *_args: object) -> ClaimResult:
+        return ClaimResult(status="inventory_full")
+
+    async def reaction(_message: object, emoji: str) -> None:
+        reactions.append(emoji)
+
+    async def publish(_guild_id: int, _config: TrademarkGuildConfig, embed: discord.Embed) -> None:
+        published.append(embed)
+
+    cog.call = call
+    cog.automatic_claim_reaction = reaction
+    cog.publish = publish
+    message = SimpleNamespace(
+        guild=SimpleNamespace(id=1, emojis=()),
+        author=SimpleNamespace(id=2, name="owner", bot=False),
+        webhook_id=None,
+        content="Кот™",
+        channel=SimpleNamespace(id=999999999999999999),
+        id=222222222222222222,
+    )
+
+    asyncio.run(cog.on_message(cast(Any, message)))
+
+    assert reactions == ["❌"]
+    assert len(published) == 1
+    assert published[0].title == "Неудачная попытка патента"
+    assert published[0].description == (
+        "<@2> попытался запатентовать Кот™, но не судьба.\n\n"
+        "**Причина**\n"
+        f"В инвентаре уже {trademark_count_text(config.inventory_limit)}. "
+        "Освободи место, чтобы получить новую!"
+    )
+    assert "Инвентарь заполнен!" not in str(published[0].description)
 
 
 @pytest.mark.parametrize(
@@ -663,8 +710,11 @@ def test_trademark_interface_hides_technical_ids_and_identifies_people() -> None
     )
     assert all(value in success_text for value in ("Кот™", "<@1>"))
     assert all(value in failure_text for value in ("Неудачная попытка патента", "Кот™", "<@3>", "<@2>"))
-    assert own_failure.description == ("<@2> такой глупец, что решил подать патент на свою же трейд марку Кот™!")
-    assert all(value in rejection_text for value in ("Патент не оформлен", "Кот™", "<@3>", "Достигнут лимит!"))
+    assert own_failure.description == (
+        "<@2> попытался запатентовать Кот™, но не судьба.\n\n**Причина**\nЭта трейд марка уже запатентована на его же имя!"
+    )
+    assert all(value in rejection_text for value in ("Неудачная попытка патента", "Кот™", "<@3>", "Достигнут лимит!"))
+    assert failure.description == ("<@3> попытался запатентовать Кот™, но не судьба.\n\n**Причина**\nЭта трейд марка уже принадлежит <@2>!")
     assert "**Причина**\nДостигнут лимит!" in str(rejection.description)
     assert "Причина:" not in str(rejection.description)
     assert all(
