@@ -113,6 +113,9 @@ If the message later drops below the required number of stars, or if the origina
 
 In practice, star messages work like a community archive. Members decide what deserves to stay visible, Shelley just handles the boring part in the background.
 
+> [!CAUTION]
+> Discord API does not allow messages from age-restricted channels to be forwarded into regular channels. If you want star messages to work with NSFW, make sure the star channel is age-restricted too.
+
 ## Announcements
 
 An admin can send text to the notification channel and attach files, edit them. Technically, it doesn’t really make sense, ik that, it does give the server some personality though.
