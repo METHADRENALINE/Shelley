@@ -116,11 +116,13 @@ class ChatBridgeCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message) -> None:
-        if not self.cfg.enabled or message.author.bot or message.webhook_id or message.guild is None:
+        if not self.cfg.enabled or message.webhook_id or message.guild is None:
             return
         for name, route in self.cfg.routes.items():
             if not route.discord_to_minecraft or message.guild.id != route.guild_id or message.channel.id != route.channel_id:
                 continue
+            if message.author.bot and message.author.id not in route.allowed_bot_user_ids:
+                return
             text = clean_text(message.clean_content)[: self.cfg.max_message_length]
             if not text:
                 return

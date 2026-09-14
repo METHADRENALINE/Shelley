@@ -74,6 +74,8 @@ def test_routes_require_one_destination_and_separate_channels():
         config(max_message_length=2001)
     with pytest.raises(ValidationError):
         BridgeRoute.model_validate({**config().routes["game"].model_dump(), "discord_format": "{text.__class__}"})
+    with pytest.raises(ValidationError):
+        BridgeRoute.model_validate({**config().routes["game"].model_dump(), "allowed_bot_user_ids": [0]})
 
 
 def test_secrets_are_required_only_when_enabled(tmp_path, monkeypatch):
@@ -130,6 +132,19 @@ def test_discord_uses_username_and_cooldown():
     value.store.enqueue.assert_called_once()
     args = value.store.enqueue.call_args.args
     assert args[:6] == ("game", "server", "minecraft", "88", "username", "hello")
+
+
+def test_discord_accepts_only_configured_bots():
+    value = cog()
+    value.cfg.routes["game"].allowed_bot_user_ids = {42}
+
+    async def run():
+        await value.on_message(message(author=SimpleNamespace(id=41, bot=True, name="blocked")))
+        await value.on_message(message(author=SimpleNamespace(id=42, bot=True, name="allowed")))
+
+    asyncio.run(run())
+    value.store.enqueue.assert_called_once()
+    assert value.store.enqueue.call_args.args[4] == "allowed"
 
 
 def test_exchange_auth_expiry_and_acknowledgement(monkeypatch):
