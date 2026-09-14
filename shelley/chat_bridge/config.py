@@ -23,11 +23,14 @@ class BridgeRoute(BaseModel):
     minecraft_to_discord: bool = True
     discord_to_minecraft: bool = True
     public_announcements: bool = True
+    allowed_bot_user_ids: set[int] = Field(default_factory=set)
     discord_format: str = "{text}"
     nodes: dict[str, BridgeNode] = Field(min_length=1, max_length=20)
 
     @model_validator(mode="after")
     def validate_route(self) -> BridgeRoute:
+        if any(user_id <= 0 or user_id >= 2**64 for user_id in self.allowed_bot_user_ids):
+            raise ValueError("allowed_bot_user_ids must contain valid Discord IDs")
         if self.discord_to_minecraft and sum(node.receive_discord for node in self.nodes.values()) != 1:
             raise ValueError("exactly one node must receive Discord messages for each route")
         validate_names(self.nodes)

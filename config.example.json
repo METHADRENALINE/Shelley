@@ -19,6 +19,7 @@
         "minecraft_to_discord": true,
         "discord_to_minecraft": true,
         "public_announcements": true,
+        "allowed_bot_user_ids": [],
         "discord_format": "{text}",
         "nodes": {
           "server": {
