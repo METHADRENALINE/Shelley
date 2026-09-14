@@ -12,6 +12,7 @@ coverage.xml
 htmlcov/
 *.egg-info/
 build/
+.gradle/
 dist/
 
 .venv/

@@ -18,6 +18,8 @@ SKIP_DIRS = {
     ".venv",
     "__pycache__",
     "venv",
+    ".gradle",
+    "build",
 }
 TEXT_SUFFIXES = {
     "",
@@ -32,6 +34,9 @@ TEXT_SUFFIXES = {
     ".txt",
     ".yml",
     ".yaml",
+    ".java",
+    ".gradle",
+    ".properties",
 }
 
 

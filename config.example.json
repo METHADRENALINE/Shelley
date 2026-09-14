@@ -1,5 +1,35 @@
 {
   "client_id": 0,
+  "chat_bridge": {
+    "enabled": false,
+    "bind_host": "127.0.0.1",
+    "port": 8765,
+    "tls_certificate": "",
+    "tls_private_key": "",
+    "poll_seconds": 1,
+    "message_ttl_seconds": 120,
+    "retention_hours": 24,
+    "max_message_length": 1500,
+    "max_queue": 500,
+    "user_interval_seconds": 1,
+    "routes": {
+      "game": {
+        "guild_id": 0,
+        "channel_id": 0,
+        "minecraft_to_discord": true,
+        "discord_to_minecraft": true,
+        "public_announcements": true,
+        "discord_format": "{text}",
+        "nodes": {
+          "server": {
+            "token_env": "CHAT_BRIDGE_GAME_TOKEN",
+            "receive_discord": true,
+            "label": ""
+          }
+        }
+      }
+    }
+  },
   "token": "replace-with-your-discord-bot-token",
   "dev_guild_id": 0,
   "notify_channel_id": 0,

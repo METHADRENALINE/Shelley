@@ -1,0 +1,5 @@
+name: ChatBridge
+version: '1.0.0'
+main: net.methadrenaline.bridge.paper.PaperBridge
+api-version: '26.2'
+softdepend: [MACore]
