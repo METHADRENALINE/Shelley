@@ -13,6 +13,8 @@ from pydantic import (
     model_validator,
 )
 
+from .chat_bridge.config import ChatBridgeConfig
+
 TOKEN_PLACEHOLDER = "replace-with-your-discord-bot-token"
 
 
@@ -425,6 +427,7 @@ class BotConfig(BaseModel):
     welcome_update_seconds: int = 5
     welcome_presence_check_seconds: int = 60
     star_forward: StarForwardConfig = Field(default_factory=StarForwardConfig)
+    chat_bridge: ChatBridgeConfig = Field(default_factory=ChatBridgeConfig)
     update_seconds: int = 30
     timeout_seconds: float = 3
     state_path: str = "data/state.json"
@@ -482,6 +485,10 @@ class BotConfig(BaseModel):
 
     def validate_runtime(self) -> None:
         errors: list[str] = []
+        try:
+            self.chat_bridge.validate_runtime()
+        except ValueError as error:
+            errors.append(str(error))
         if not self.database.resolved_url().strip():
             errors.append("database.url or SHELLEY_DATABASE_URL must be configured")
         if self.notify_channel_id <= 0:

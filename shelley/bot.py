@@ -10,6 +10,7 @@ from .settings import get_config
 
 INITIAL_EXTENSIONS = (
     "shelley.cogs.admin",
+    "shelley.cogs.chat_bridge",
     "shelley.cogs.information",
     "shelley.cogs.points",
     "shelley.cogs.star_forward",

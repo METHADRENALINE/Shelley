@@ -1,0 +1,26 @@
+modLoader="javafml"
+loaderVersion="[4,)"
+license="BSD-3-Clause"
+
+[[mods]]
+modId="chat_bridge"
+version="1.0.0"
+displayName="Chat Bridge"
+description="Public chat bridge"
+
+[[dependencies.chat_bridge]]
+modId="neoforge"
+type="required"
+versionRange="[21.1.248,21.2)"
+ordering="NONE"
+side="SERVER"
+
+[[dependencies.chat_bridge]]
+modId="minecraft"
+type="required"
+versionRange="[1.21.1]"
+ordering="NONE"
+side="SERVER"
+
+[[mixins]]
+config="chat_bridge.mixins.json"

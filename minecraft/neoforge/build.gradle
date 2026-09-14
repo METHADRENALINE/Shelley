@@ -1,0 +1,22 @@
+apply plugin: 'net.neoforged.moddev'
+neoForge {
+    version = '21.1.248'
+    mods {
+        chat_bridge {
+            sourceSet sourceSets.main
+            sourceSet project(':common').sourceSets.main
+        }
+    }
+    if (project.hasProperty('smokeDirectory')) {
+        runs {
+            server {
+                server()
+                gameDirectory = file(project.property('smokeDirectory'))
+                programArgument '--nogui'
+            }
+        }
+    }
+}
+tasks.withType(JavaExec).configureEach {
+    standardInput = System.in
+}

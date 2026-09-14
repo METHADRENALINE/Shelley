@@ -1,0 +1,32 @@
+plugins {
+    id 'net.neoforged.moddev' version '2.0.144' apply false
+}
+
+allprojects {
+    group = 'net.methadrenaline.bridge'
+    version = '1.0.0'
+    repositories {
+        mavenCentral()
+        maven { url = 'https://repo.papermc.io/repository/maven-public/' }
+    }
+}
+
+subprojects {
+    apply plugin: 'java-library'
+    java.toolchain.languageVersion = JavaLanguageVersion.of(project.name in ['paper', 'velocity'] ? 25 : 21)
+    tasks.withType(JavaCompile).configureEach {
+        options.encoding = 'UTF-8'
+    }
+    dependencies {
+        testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+        testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    }
+    test { useJUnitPlatform() }
+    if (project.name != 'common') {
+        dependencies { implementation project(':common') }
+        tasks.named('jar') {
+            from project(':common').sourceSets.main.output
+            archiveBaseName = "chat-bridge-${project.name}"
+        }
+    }
+}
