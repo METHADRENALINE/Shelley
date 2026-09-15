@@ -130,6 +130,7 @@
     {
       "kind": "minecraft",
       "address": "ip:port",
+      "chat_channel_id": 0,
       "placeholder": "SMP_STATUS",
       "components": [
         {
@@ -152,6 +153,7 @@
     {
       "kind": "minecraft",
       "address": "ip:port",
+      "chat_channel_id": 0,
       "placeholder": "MODDED_STATUS",
       "version_edition_override": "NeoForge"
     }

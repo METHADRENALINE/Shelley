@@ -22,8 +22,8 @@ from ..views.bm import status_message_view
 logger = logging.getLogger(__name__)
 
 StatusSnapshot = dict[str, Any]
-ProbeResult = tuple[bool, int | None, str | None]
-ComponentProbeResult = tuple[str, int, str | None]
+ProbeResult = tuple[bool, int | None, str | None, list[str]]
+ComponentProbeResult = tuple[str, int, str | None, list[str]]
 
 
 async def fetch_status_channel(bot: commands.Bot, channel_id: int) -> discord.TextChannel:
@@ -83,7 +83,7 @@ async def probe_gateway_safely(
             "minecraft gateway probe failed",
             extra={"placeholder": server.placeholder, "kind": server.kind},
         )
-    return False, None, None
+    return False, None, None, []
 
 
 async def probe_component_safely(
@@ -106,7 +106,7 @@ async def probe_component_safely(
             "minecraft component probe failed",
             extra={"placeholder": server.placeholder, "component": component.label},
         )
-    return ":red_circle:", 0, None
+    return ":red_circle:", 0, None, []
 
 
 async def collect_component_results(
@@ -121,6 +121,7 @@ def build_cluster_snapshot(
     component_results: list[ComponentProbeResult],
     gateway_online: bool,
     gateway_version: str | None,
+    gateway_player_names: list[str],
 ) -> StatusSnapshot:
     component_statuses = [result[0] for result in component_results]
     status = aggregate_cluster_status(component_statuses, gateway_online)
@@ -129,15 +130,24 @@ def build_cluster_snapshot(
             "label": component.label,
             "status": component_status,
             "players": players,
+            "player_names": player_names,
             "version": component_version,
         }
-        for component, (component_status, players, component_version) in zip(server.components, component_results, strict=True)
+        for component, (component_status, players, component_version, player_names) in zip(
+            server.components, component_results, strict=True
+        )
+    ]
+    total_players = sum(result[1] for result in component_results)
+    all_player_names = list(dict.fromkeys([*gateway_player_names, *(name for result in component_results for name in result[3])]))[
+        :total_players
     ]
     return {
         "status": status,
-        "players": sum(component["players"] for component in components),
+        "players": total_players,
+        "player_names": all_player_names,
         "version": choose_cluster_version(gateway_version, components),
         "components": components,
+        "chat_channel_id": server.chat_channel_id,
     }
 
 
@@ -149,23 +159,28 @@ def offline_snapshot(
         return {
             "status": ":red_circle:",
             "players": 0,
+            "player_names": [],
             "version": None,
             "components": [
                 {
                     "label": component.label,
                     "status": ":red_circle:",
                     "players": 0,
+                    "player_names": [],
                     "version": None,
                 }
                 for component in server.components
             ],
+            "chat_channel_id": server.chat_channel_id,
         }
     status = ":yellow_circle:" if server.placeholder in starting_statuses else ":red_circle:"
     return {
         "status": status,
         "players": 0,
+        "player_names": [],
         "version": None,
         "components": [],
+        "chat_channel_id": server.chat_channel_id,
     }
 
 
@@ -181,15 +196,16 @@ async def collect_server_snapshot(
                 probe_gateway_safely(server, timeout_seconds),
                 collect_component_results(server, timeout_seconds),
             )
-            gateway_online, _players, version = gateway_result
+            gateway_online, _players, version, gateway_player_names = gateway_result
             return build_cluster_snapshot(
                 server,
                 component_results,
                 gateway_online,
                 version,
+                gateway_player_names,
             )
 
-        gateway_online, players, version = await probe_gateway_safely(
+        gateway_online, players, version, player_names = await probe_gateway_safely(
             server,
             timeout_seconds,
         )
@@ -204,8 +220,10 @@ async def collect_server_snapshot(
             return {
                 "status": ":green_circle:",
                 "players": int(players or 0),
+                "player_names": player_names,
                 "version": version,
                 "components": [],
+                "chat_channel_id": server.chat_channel_id,
             }
         return offline_snapshot(server, starting_statuses)
     except Exception:

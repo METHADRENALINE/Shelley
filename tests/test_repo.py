@@ -414,8 +414,8 @@ def test_minecraft_probes_enforce_their_own_timeout(monkeypatch) -> None:
         )
 
     java_result, bedrock_result = async_await(run_probes())
-    assert java_result == (False, None, None)
-    assert bedrock_result == (False, None, None)
+    assert java_result == (False, None, None, [])
+    assert bedrock_result == (False, None, None, [])
 
 
 def test_minecraft_auto_probe_detects_java_and_bedrock_without_serial_wait(monkeypatch) -> None:
@@ -428,8 +428,8 @@ def test_minecraft_auto_probe_detects_java_and_bedrock_without_serial_wait(monke
 
     async def java_status(address, _timeout, _edition_override=None):
         if address.startswith("java"):
-            return True, 4, "Java Edition 26.1.2"
-        return False, None, None
+            return True, 4, "Java Edition 26.1.2", ["PlayerOne"]
+        return False, None, None, []
 
     async def bedrock_status(address, _timeout):
         if address.startswith("java"):
@@ -438,7 +438,7 @@ def test_minecraft_auto_probe_detects_java_and_bedrock_without_serial_wait(monke
             except asyncio.CancelledError:
                 cancelled.append(address)
                 raise
-        return True, 3, "Bedrock 1.21.93"
+        return True, 3, "Bedrock 1.21.93", []
 
     monkeypatch.setattr(minecraft, "minecraft_java_status", java_status)
     monkeypatch.setattr(minecraft, "minecraft_bedrock_status", bedrock_status)
@@ -455,8 +455,8 @@ def test_minecraft_auto_probe_detects_java_and_bedrock_without_serial_wait(monke
         return java, bedrock
 
     java_result, bedrock_result = async_await(detect())
-    assert java_result == (True, 4, "Java Edition 26.1.2")
-    assert bedrock_result == (True, 3, "Bedrock 1.21.93")
+    assert java_result == (True, 4, "Java Edition 26.1.2", ["PlayerOne"])
+    assert bedrock_result == (True, 3, "Bedrock 1.21.93", [])
     assert cancelled == ["java.example:1"]
 
 
@@ -469,7 +469,7 @@ def test_status_collection_isolates_a_timed_out_server(monkeypatch) -> None:
     async def probe(server, _timeout):
         if server.placeholder == "DOWN":
             raise TimeoutError
-        return True, 4, "Java Edition 26.1.2"
+        return True, 4, "Java Edition 26.1.2", ["PlayerOne"]
 
     monkeypatch.setattr(status, "probe_server", probe)
     monkeypatch.setattr(status, "clear_starting_status", lambda *_args: None)
@@ -495,9 +495,52 @@ def test_status_collection_isolates_a_timed_out_server(monkeypatch) -> None:
     assert online_snapshot == {
         "status": ":green_circle:",
         "players": 4,
+        "player_names": ["PlayerOne"],
         "version": "Java Edition 26.1.2",
         "components": [],
+        "chat_channel_id": 0,
     }
+
+
+def test_status_embeds_show_player_names_and_game_chat() -> None:
+    from shelley.renderers.status import render_bm_status_embeds, render_smp_status_embeds
+
+    smp_embeds = render_smp_status_embeds(
+        "templates/status-smp-creative.json",
+        {
+            "status": ":green_circle:",
+            "version": "Java Edition 26.1.2",
+            "player_names": ["Player_One", "PlayerTwo"],
+            "chat_channel_id": 123456789012345678,
+            "components": [
+                {
+                    "status": ":green_circle:",
+                    "players": 2,
+                    "player_names": ["Player_One", "PlayerTwo"],
+                }
+            ],
+        },
+    )
+    smp_summary = smp_embeds[1].description or ""
+    smp_backend = smp_embeds[2].description or ""
+    assert "2 участника\nPlayer\\_One, PlayerTwo" in smp_summary
+    assert "2 участника\nPlayer\\_One, PlayerTwo" in smp_backend
+    assert "### **Игровой чат**\n<#123456789012345678>" in smp_summary
+
+    bm_embeds = render_bm_status_embeds(
+        "templates/status-bm.json",
+        {
+            "status": ":green_circle:",
+            "players": 1,
+            "player_names": ["PlayerOne"],
+            "version": "NeoForge 1.21.1",
+            "chat_channel_id": 223456789012345678,
+            "components": [],
+        },
+    )
+    bm_status = bm_embeds[2].description or ""
+    assert "1 участник\nPlayerOne" in bm_status
+    assert "### **Игровой чат**\n<#223456789012345678>" in bm_status
 
 
 def test_recovery_control_cooldown_is_immediate_and_target_wide() -> None:
