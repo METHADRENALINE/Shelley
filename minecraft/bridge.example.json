@@ -10,6 +10,7 @@
   "maxMessageLength": 1500,
   "playerChat": true,
   "publicBroadcasts": true,
+  "publicAnnouncementLanguage": "en_us",
   "discordFormat": "[Discord] <{username}> {text}",
   "globalChannel": "ma:core",
   "globalEvent": "global-chat"

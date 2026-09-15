@@ -18,6 +18,7 @@ public final class BridgeConfig {
     public int maxMessageLength = 1500;
     public boolean playerChat = true;
     public boolean publicBroadcasts = true;
+    public String publicAnnouncementLanguage = "en_us";
     public String discordFormat = "[Discord] <{username}> {text}";
     public String globalChannel = "ma:core";
     public String globalEvent = "global-chat";
@@ -52,6 +53,9 @@ public final class BridgeConfig {
         }
         if (!discordFormat.contains("{username}") || !discordFormat.contains("{text}")) {
             throw new IllegalArgumentException("Discord format needs {username} and {text}");
+        }
+        if (publicAnnouncementLanguage == null || !publicAnnouncementLanguage.matches("[a-z]{2}_[a-z]{2}")) {
+            throw new IllegalArgumentException("Public announcement language must use a locale such as en_us");
         }
     }
 }
