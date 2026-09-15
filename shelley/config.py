@@ -339,6 +339,7 @@ class ServerConfig(BaseModel):
     placeholder: str
     kind: str = "minecraft"
     address: str | None = None
+    chat_channel_id: int = 0
     version_edition_override: str | None = None
     components: list[ServerComponentConfig] = Field(default_factory=list)
 
@@ -349,6 +350,13 @@ class ServerConfig(BaseModel):
         if not value:
             raise ValueError("value must not be empty")
         return value
+
+    @field_validator("chat_channel_id")
+    @classmethod
+    def validate_chat_channel_id(cls, value: int) -> int:
+        if int(value) < 0 or int(value) >= 2**64:
+            raise ValueError("chat_channel_id must be a Discord snowflake or zero")
+        return int(value)
 
 
 class RemoteTargetConfig(BaseModel):

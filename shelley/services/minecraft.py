@@ -10,6 +10,8 @@ from ..config import ServerComponentConfig, ServerConfig
 
 logger = logging.getLogger(__name__)
 
+ProbeResult = tuple[bool, int | None, str | None, list[str]]
+
 JAVA_MODLOADERS = (
     ("neoforge", "NeoForge"),
     ("minecraftforge", "Forge"),
@@ -109,11 +111,22 @@ def status_version_label(edition: str, version_name: object) -> str:
     return f"{edition} {version}".strip()
 
 
+def status_player_names(status: Any) -> list[str]:
+    sample = getattr(getattr(status, "players", None), "sample", None) or []
+    names: list[str] = []
+    for player in sample:
+        name = str(getattr(player, "name", "") or "").strip()
+        name = "".join(character for character in name if character.isprintable())[:64]
+        if name and name not in names:
+            names.append(name)
+    return names
+
+
 async def minecraft_java_status(
     address: str,
     timeout: float,
     edition_override: str | None = None,
-) -> tuple[bool, int | None, str | None]:
+) -> ProbeResult:
     async def query_status():
         server = await JavaServer.async_lookup(address, timeout=timeout)
         return await server.async_status()
@@ -126,19 +139,21 @@ async def minecraft_java_status(
         online = getattr(st.players, "online", None)
         version = getattr(getattr(st, "version", None), "name", None)
         edition = str(edition_override or "").strip() or detect_java_modloader(st) or "Java Edition"
-        return True, int(online) if online is not None else None, status_version_label(edition, version)
+        player_count = int(online) if online is not None else None
+        player_names = status_player_names(st)[: max(0, int(player_count or 0))]
+        return True, player_count, status_version_label(edition, version), player_names
     except TimeoutError:
         logger.debug("minecraft java probe timed out")
-        return False, None, None
+        return False, None, None, []
     except Exception as exc:
         logger.debug(
             "minecraft java probe failed",
             extra={"exception_type": type(exc).__name__},
         )
-        return False, None, None
+        return False, None, None, []
 
 
-async def minecraft_bedrock_status(address: str, timeout: float) -> tuple[bool, int | None, str | None]:
+async def minecraft_bedrock_status(address: str, timeout: float) -> ProbeResult:
     async def query_status():
         server = await asyncio.to_thread(
             BedrockServer.lookup,
@@ -154,23 +169,23 @@ async def minecraft_bedrock_status(address: str, timeout: float) -> tuple[bool, 
         )
         online = getattr(st.players, "online", None)
         version = getattr(getattr(st, "version", None), "name", None)
-        return True, int(online) if online is not None else None, status_version_label("Bedrock", version)
+        return True, int(online) if online is not None else None, status_version_label("Bedrock", version), []
     except TimeoutError:
         logger.debug("minecraft bedrock probe timed out")
-        return False, None, None
+        return False, None, None, []
     except Exception as exc:
         logger.debug(
             "minecraft bedrock probe failed",
             extra={"exception_type": type(exc).__name__},
         )
-        return False, None, None
+        return False, None, None, []
 
 
 async def minecraft_auto_status(
     address: str,
     timeout: float,
     edition_override: str | None = None,
-) -> tuple[bool, int | None, str | None]:
+) -> ProbeResult:
     tasks = {
         asyncio.create_task(minecraft_java_status(address, timeout, edition_override)),
         asyncio.create_task(minecraft_bedrock_status(address, timeout)),
@@ -187,7 +202,7 @@ async def minecraft_auto_status(
                     continue
                 if result[0]:
                     return result
-        return False, None, None
+        return False, None, None, []
     finally:
         for task in tasks:
             if not task.done():
@@ -195,29 +210,29 @@ async def minecraft_auto_status(
         await asyncio.gather(*tasks, return_exceptions=True)
 
 
-async def probe_server(server: ServerConfig, timeout: float) -> tuple[bool, int | None, str | None]:
+async def probe_server(server: ServerConfig, timeout: float) -> ProbeResult:
     kind = (server.kind or "minecraft").strip().lower()
 
     if kind in ("minecraft_java", "minecraft_java_cluster"):
         if not server.address:
-            return False, None, None
+            return False, None, None, []
         return await minecraft_java_status(server.address, timeout, server.version_edition_override)
 
     if kind in ("minecraft_bedrock", "minecraft_bedrock_cluster"):
         if not server.address:
-            return False, None, None
+            return False, None, None, []
         return await minecraft_bedrock_status(server.address, timeout)
 
     if kind in ("minecraft", "minecraft_auto", "minecraft_cluster"):
         if not server.address:
-            return False, None, None
+            return False, None, None, []
         return await minecraft_auto_status(
             server.address,
             timeout,
             server.version_edition_override,
         )
 
-    return False, None, None
+    return False, None, None, []
 
 
 async def tmux_session_exists(session: str, timeout: float = 2.0) -> bool:
@@ -239,15 +254,15 @@ async def tmux_session_exists(session: str, timeout: float = 2.0) -> bool:
         return False
 
 
-async def probe_server_component(component: ServerComponentConfig, timeout: float) -> tuple[str, int, str | None]:
-    online, players, version = await minecraft_java_status(component.address, timeout)
+async def probe_server_component(component: ServerComponentConfig, timeout: float) -> tuple[str, int, str | None, list[str]]:
+    online, players, version, player_names = await minecraft_java_status(component.address, timeout)
     if online:
-        return ":green_circle:", int(players or 0), version
+        return ":green_circle:", int(players or 0), version, player_names
 
     if component.tmux_session and await tmux_session_exists(component.tmux_session):
-        return ":yellow_circle:", 0, None
+        return ":yellow_circle:", 0, None, []
 
-    return ":red_circle:", 0, None
+    return ":red_circle:", 0, None, []
 
 
 def aggregate_cluster_status(component_statuses: list[str], gateway_online: bool) -> str:

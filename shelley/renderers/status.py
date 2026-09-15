@@ -45,11 +45,40 @@ def replace_status_variables(
     )
 
 
-def status_online_block(count: int, heading: str, trailing_spacer: bool) -> str:
+def status_player_list(count: int, player_names: list[str]) -> str:
+    if count <= 0:
+        return ""
+    names: list[str] = []
+    for raw_name in player_names[:count]:
+        name = discord.utils.escape_markdown(discord.utils.escape_mentions(str(raw_name).strip()))
+        if not name:
+            continue
+        candidate = ", ".join([*names, name])
+        if len(candidate) > 750:
+            break
+        names.append(name)
+    return ", ".join(names)
+
+
+def status_online_block(
+    count: int,
+    heading: str,
+    trailing_spacer: bool,
+    player_names: list[str],
+) -> str:
     block = f"### **{heading}**\n{int(count)} {participant_word(count)}\n"
+    names = status_player_list(count, player_names)
+    if names:
+        block += f"{names}\n"
     if trailing_spacer:
         block += "\u2800\n"
     return block
+
+
+def game_chat_block(channel_id: int) -> str:
+    if channel_id <= 0:
+        return ""
+    return f"\u2800\n### **Игровой чат**\n<#{channel_id}>"
 
 
 def load_status_embed_template(path: str) -> list[dict]:
@@ -97,14 +126,22 @@ def render_smp_status_embeds(template_path: str, snapshot: dict) -> list[discord
     if any(component["status"] == ":green_circle:" for component in components):
         summary_description = summary_description.replace(
             "[\u043e\u0431\u0449\u0438\u0439 \u043e\u043d\u043b\u0430\u0439\u043d]",
-            status_online_block(total_players, "\u041e\u0431\u0449\u0438\u0439 \u043e\u043d\u043b\u0430\u0439\u043d", True),
+            status_online_block(
+                total_players,
+                "\u041e\u0431\u0449\u0438\u0439 \u043e\u043d\u043b\u0430\u0439\u043d",
+                True,
+                list(snapshot.get("player_names", [])),
+            ),
         )
     else:
         summary_description = summary_description.replace(
             "[\u043e\u0431\u0449\u0438\u0439 \u043e\u043d\u043b\u0430\u0439\u043d]",
             "",
         )
-    summary["description"] = summary_description
+    summary["description"] = summary_description.replace(
+        "[игровой чат]",
+        game_chat_block(int(snapshot.get("chat_channel_id", 0))),
+    )
 
     for index, component in enumerate(components, start=2):
         backend = raw_embeds[index]
@@ -122,6 +159,7 @@ def render_smp_status_embeds(template_path: str, snapshot: dict) -> list[discord
                     int(component.get("players", 0)),
                     "\u041e\u043d\u043b\u0430\u0439\u043d",
                     False,
+                    list(component.get("player_names", [])),
                 ),
             )
         else:
@@ -168,11 +206,15 @@ def render_bm_status_embeds(template_path: str, snapshot: dict) -> list[discord.
                 int(snapshot.get("players", 0)),
                 "\u041e\u043d\u043b\u0430\u0439\u043d",
                 True,
+                list(snapshot.get("player_names", [])),
             ),
         )
     else:
         status_description = status_description.replace("[\u043e\u043d\u043b\u0430\u0439\u043d]", "")
-    status_embed["description"] = status_description
+    status_embed["description"] = status_description.replace(
+        "[игровой чат]",
+        game_chat_block(int(snapshot.get("chat_channel_id", 0))),
+    )
 
     if status in (":red_circle:", ":yellow_circle:"):
         color = int(raw_embeds[-1].get("color", raw_embeds[0].get("color", 0)))
