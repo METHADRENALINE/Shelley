@@ -49,7 +49,8 @@ def status_player_list(count: int, player_names: list[str]) -> str:
     if count <= 0:
         return ""
     names: list[str] = []
-    for raw_name in player_names[:count]:
+    ordered_names = sorted({str(name).strip() for name in player_names if str(name).strip()}, key=lambda name: (name.casefold(), name))
+    for raw_name in ordered_names[:count]:
         name = discord.utils.escape_markdown(discord.utils.escape_mentions(str(raw_name).strip()))
         if not name:
             continue

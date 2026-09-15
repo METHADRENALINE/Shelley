@@ -28,6 +28,7 @@ public final class VelocityBridge {
     private final Path directory;
     private BridgeClient bridge;
     private BridgeConfig config;
+    private AutoCloseable announcementSubscription;
 
     @Inject
     public VelocityBridge(ProxyServer server, Logger logger, @DataDirectory Path directory) {
@@ -47,8 +48,25 @@ public final class VelocityBridge {
                     (username, text) -> server.getAllPlayers().forEach(player -> player.sendMessage(render(username, text))),
                     logger::info);
             bridge.start();
+            subscribeAnnouncements();
         } catch (Exception exception) {
             logger.error("Chat bridge could not start: {}", exception.getClass().getSimpleName());
+        }
+    }
+
+    private void subscribeAnnouncements() {
+        if (!config.publicBroadcasts) {
+            return;
+        }
+        try {
+            Object provider = server.getPluginManager().getPlugin("mavelocore")
+                    .flatMap(plugin -> plugin.getInstance()).orElseThrow();
+            announcementSubscription = PublicAnnouncementSubscription.subscribe(
+                    provider, config.publicAnnouncementLanguage, text -> bridge.publish("broadcast", text));
+            logger.info("Public network announcements connected");
+        } catch (ReflectiveOperationException | RuntimeException exception) {
+            logger.warn("Public network announcements unavailable; MAVeloCore with announcement support is required: {}",
+                    exception.getClass().getSimpleName());
         }
     }
 
@@ -84,6 +102,13 @@ public final class VelocityBridge {
 
     @Subscribe
     public void stop(ProxyShutdownEvent event) {
+        if (announcementSubscription != null) {
+            try {
+                announcementSubscription.close();
+            } catch (Exception exception) {
+                logger.warn("Could not unsubscribe public network announcements: {}", exception.getClass().getSimpleName());
+            }
+        }
         if (bridge != null) {
             bridge.close();
         }
