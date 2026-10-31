@@ -13,6 +13,7 @@ INITIAL_EXTENSIONS = (
     "shelley.cogs.chat_bridge",
     "shelley.cogs.information",
     "shelley.cogs.points",
+    "shelley.cogs.scp_sl",
     "shelley.cogs.star_forward",
     "shelley.cogs.status",
     "shelley.cogs.welcome",

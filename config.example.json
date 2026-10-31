@@ -1,5 +1,16 @@
 {
   "client_id": 0,
+  "scp_sl": {
+    "enabled": false,
+    "display_address": "",
+    "logo_url": "",
+    "color": 4478207,
+    "token_env": "SHELLEY_SCP_SL_TOKEN",
+    "api_url": "http://127.0.0.1:8790",
+    "poll_seconds": 1,
+    "timeout_seconds": 2,
+    "stale_seconds": 5
+  },
   "chat_bridge": {
     "enabled": false,
     "bind_host": "127.0.0.1",
