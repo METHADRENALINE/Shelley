@@ -11,6 +11,7 @@ from discord.ui.view import ViewStore
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from shelley.cogs.scp_sl import STATUS_KEY, ModeView, ScpSlCog
+from shelley.cogs.status import StatusCog
 from shelley.scp_sl.client import MAX_RESPONSE_BYTES, ScpSlApiError, ScpSlClient, SnapshotCache
 from shelley.scp_sl.config import ScpSlConfig
 from shelley.scp_sl.protocol import Snapshot, VoteResult
@@ -37,11 +38,11 @@ def snapshot(**changes):
         "mode": None,
         "mode_name_ru": None,
         "available_modes": [
-            {"id": "plain", "name_ru": "\u041e\u0431\u044b\u0447\u043d\u044b\u0439"},
+            {"id": "plain", "name_ru": "\u0412\u0430\u043d\u0438\u043b\u044c (\u043f\u043e\u0447\u0442\u0438)"},
             {"id": "perks", "name_ru": "\u041f\u0435\u0440\u043a\u0438"},
             {"id": "paravoz", "name_ru": "\u041f\u0430\u0440\u0430\u0432\u043e\u0437"},
         ],
-        "poll": {"id": POLL_ID, "deadline": now + timedelta(seconds=15), "open": True},
+        "poll": {"id": POLL_ID, "deadline": now + timedelta(seconds=30), "open": True},
     }
     values.update(changes)
     return Snapshot.model_validate(values)
@@ -51,6 +52,7 @@ def cog(monkeypatch):
     cfg = SimpleNamespace(scp_sl=config(), status_channel_id=20)
     monkeypatch.setattr("shelley.cogs.scp_sl.get_config", lambda: cfg)
     bot = Mock()
+    bot.get_cog.return_value = None
     bot.user.id = 50
     value = ScpSlCog(bot)
     value.channel = Mock(spec=discord.TextChannel)
@@ -387,6 +389,7 @@ def test_publish_deduplicates_then_hides_modes_when_api_fails(monkeypatch):
     async def run():
         await value.publish_once()
         assert value.message.edit.await_count == 1
+        assert value.message.edit.await_args.kwargs["content"] == "\u2800\n\u2800"
         await value.publish_once()
         assert value.message.edit.await_count == 1
         value.client.snapshot.side_effect = ScpSlApiError("unavailable")
@@ -432,6 +435,7 @@ def test_notfound_recreates_with_stable_state_key_and_no_duplicate_next_tick(mon
 
     asyncio.run(run())
     value.channel.send.assert_awaited_once()
+    assert value.channel.send.await_args.kwargs["content"] == "\u2800\n\u2800"
     save.assert_called_once_with(10, 31, STATUS_KEY)
     assert STATUS_KEY == "scpsl"
     assert value.message is replacement
@@ -448,6 +452,65 @@ def test_startup_fetches_saved_scpsl_message_without_sending(monkeypatch):
     lookup.assert_called_once_with(10, "scpsl")
     value.channel.fetch_message.assert_awaited_once_with(30)
     value.channel.send.assert_not_awaited()
+
+
+def test_scp_waits_until_minecraft_messages_are_ready(monkeypatch):
+    value = cog(monkeypatch)
+    status = SimpleNamespace(messages={}, messages_ready=asyncio.Event())
+    value.bot.get_cog.return_value = status
+
+    async def run():
+        await value.publish_once()
+        value.message.edit.assert_not_awaited()
+        value.channel.send.assert_not_awaited()
+        status.messages["bm"] = SimpleNamespace(id=29)
+        status.messages_ready.set()
+        await value.publish_once()
+        value.message.edit.assert_awaited_once()
+        value._view.stop()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("state_failure", [False, True])
+def test_recreated_minecraft_messages_move_scp_last_without_losing_the_working_message(monkeypatch, state_failure):
+    value = cog(monkeypatch)
+    status = StatusCog(value.bot)
+    status.messages["bm"] = SimpleNamespace(id=29)
+    status.messages_ready.set()
+    value.bot.get_cog.return_value = status
+    original = value.message
+    original.delete = AsyncMock()
+    replacement = Mock(spec=discord.Message)
+    replacement.id = 50
+    replacement.edit = AsyncMock()
+    value.channel.send.return_value = replacement
+    saved = Mock(side_effect=[RuntimeError("database unavailable"), None] if state_failure else None)
+    monkeypatch.setattr("shelley.cogs.scp_sl.set_status_message_id", saved)
+
+    async def remove_original():
+        assert value.message is replacement
+        assert not value._save_message_id
+        assert saved.call_args.args == (10, 50, STATUS_KEY)
+
+    original.delete.side_effect = remove_original
+
+    async def run():
+        await value.publish_once()
+        status.messages["bm"] = SimpleNamespace(id=40)
+        if state_failure:
+            with pytest.raises(RuntimeError):
+                await value.publish_once()
+            original.delete.assert_not_awaited()
+        await value.publish_once()
+        assert value.message.id > max(message.id for message in status.messages.values())
+        value.channel.send.assert_awaited_once()
+        original.delete.assert_awaited_once()
+        await value.publish_once()
+        value.channel.send.assert_awaited_once()
+        value._view.stop()
+
+    asyncio.run(run())
 
 
 @pytest.mark.parametrize(
@@ -468,14 +531,30 @@ def test_strict_protocol_rejects_unsafe_or_inconsistent_snapshots(changes):
         snapshot(**changes)
 
 
-def test_single_player_has_only_api_supplied_two_modes(monkeypatch):
+def test_losing_second_player_removes_voting_until_two_return(monkeypatch):
     value = cog(monkeypatch)
-    data = snapshot(online_names=["one"], available_modes=[{"id": "plain", "name_ru": "A"}, {"id": "perks", "name_ru": "B"}])
 
     async def run():
-        view = ModeView(value, data)
-        assert [item.label for item in view.children] == ["A", "B"]
-        view.stop()
+        await value.publish_once()
+        assert len(value._view.children) == 3
+        value.cache.update(
+            snapshot(
+                online_names=["one"],
+                phase="countdown",
+                available_modes=[],
+                poll={"id": None, "deadline": None, "open": False},
+            )
+        )
+        await value.publish_once()
+        assert value.message.edit.await_args.kwargs["view"] is None
+        assert (
+            "\u0413\u043e\u043b\u043e\u0441\u043e\u0432\u0430\u043d\u0438\u0435"
+            not in value.message.edit.await_args.kwargs["embeds"][-1].description
+        )
+        value.cache.update(snapshot(poll={"id": BOOT_ID, "deadline": datetime.now(UTC) + timedelta(seconds=30), "open": True}))
+        await value.publish_once()
+        assert len(value._view.children) == 3
+        value._view.stop()
 
     asyncio.run(run())
 

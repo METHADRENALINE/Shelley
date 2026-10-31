@@ -12,7 +12,8 @@ class ScpSlConfig(BaseModel):
     enabled: bool = False
     display_address: str = Field(default="", max_length=253, pattern=r"^[A-Za-z0-9.-]*$")
     logo_url: str = Field(default="", max_length=2048)
-    color: int = Field(default=4478207, ge=0, le=0xFFFFFF)
+    color: int = Field(default=0xFFFFFF, ge=0, le=0xFFFFFF)
+    separator_content: str = Field(default="\u2800\n\u2800", max_length=2000)
     token_env: str = Field(default="SHELLEY_SCP_SL_TOKEN", max_length=80, pattern=r"^[A-Z][A-Z0-9_]*$")
     api_url: str = Field(default="http://127.0.0.1:8790", max_length=2048)
     poll_seconds: float = Field(default=1, ge=1, le=5)

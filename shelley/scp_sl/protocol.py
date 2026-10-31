@@ -73,14 +73,14 @@ class Snapshot(ProtocolModel):
             raise ValueError("mode IDs must be unique")
         if (self.mode is None) != (self.mode_name_ru is None):
             raise ValueError("selected mode requires its localized name")
-        if self.poll.open and (not self.online_names or not ids or self.phase != "voting"):
-            raise ValueError("an open poll requires players, modes and the voting phase")
+        if self.poll.open and (len(self.online_names) < 2 or not ids or self.phase != "voting"):
+            raise ValueError("an open poll requires at least two players, modes and the voting phase")
         if "paravoz" in ids and len(self.online_names) < 2:
             raise ValueError("paravoz requires at least two players")
         return self
 
     def voting(self, now: datetime) -> bool:
-        return bool(self.online_names and self.poll.open and self.poll.deadline is not None and self.poll.deadline > now)
+        return bool(len(self.online_names) >= 2 and self.poll.open and self.poll.deadline is not None and self.poll.deadline > now)
 
 
 class Vote(ProtocolModel):
