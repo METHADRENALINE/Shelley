@@ -362,6 +362,8 @@ class StatusCog(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self._task: asyncio.Task | None = None
+        self.messages: dict[str, discord.Message] = {}
+        self.messages_ready = asyncio.Event()
 
     async def cog_load(self) -> None:
         self._task = asyncio.create_task(self.status_loop())
@@ -380,7 +382,9 @@ class StatusCog(commands.Cog):
         channel = await fetch_status_channel(self.bot, int(cfg.status_channel_id))
         guild_id = int(channel.guild.id)
         normalize_status_message_ids_for_embed_layout(guild_id)
-        messages = await ensure_status_messages(channel, status_messages)
+        self.messages.update(await ensure_status_messages(channel, status_messages))
+        messages = self.messages
+        self.messages_ready.set()
         last_signatures: dict[str, str] = {}
 
         while True:

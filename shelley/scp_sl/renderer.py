@@ -38,6 +38,6 @@ def render_status(config: ScpSlConfig, snapshot: Snapshot | None, now: datetime 
     return embeds
 
 
-def payload_signature(embeds: list[discord.Embed], view: discord.ui.View | None) -> str:
+def payload_signature(embeds: list[discord.Embed], view: discord.ui.View | None, content: str | None = None) -> str:
     controls = repr(view.to_components()) if view is not None else None
-    return status_payload_signature(None, embeds, controls)
+    return status_payload_signature(content, embeds, controls)

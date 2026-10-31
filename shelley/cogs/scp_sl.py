@@ -5,6 +5,7 @@ import logging
 import time
 from contextlib import suppress
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING, cast
 
 import discord
 from discord.ext import commands
@@ -15,6 +16,9 @@ from ..scp_sl.protocol import ModeId, Snapshot, Vote
 from ..scp_sl.renderer import payload_signature, render_status
 from ..settings import get_config
 from ..state import get_status_message_id, set_status_message_id
+
+if TYPE_CHECKING:
+    from .status import StatusCog
 
 logger = logging.getLogger(__name__)
 STATUS_KEY = "scpsl"
@@ -58,6 +62,8 @@ class ScpSlCog(commands.Cog):
         self._tasks: list[asyncio.Task] = []
         self._changed = asyncio.Event()
         self._api_available: bool | None = None
+        self._retired_messages: list[discord.Message] = []
+        self._retired_retry_at = 0.0
 
     async def cog_load(self) -> None:
         if not self.config.enabled:
@@ -118,26 +124,37 @@ class ScpSlCog(commands.Cog):
                 await asyncio.wait_for(self._changed.wait(), timeout=self.config.poll_seconds)
 
     async def publish_once(self) -> None:
+        status_cog = cast("StatusCog | None", self.bot.get_cog("StatusCog"))
+        anchor_id = 0
+        if status_cog is not None:
+            if not status_cog.messages_ready.is_set():
+                return
+            anchor_id = max((message.id for message in status_cog.messages.values()), default=0)
         if self.channel is None:
             channel = await self.bot.fetch_channel(int(get_config().status_channel_id))
             if not isinstance(channel, discord.TextChannel):
                 raise RuntimeError("status_channel_id must point to a TextChannel")
             self.channel = channel
-        if self.message is None:
+        if self.message is None and not self._retired_messages:
             message_id = get_status_message_id(int(self.channel.guild.id), STATUS_KEY)
             if message_id:
                 try:
                     self.message = await self.channel.fetch_message(message_id)
                 except discord.NotFound:
                     pass
+        if self.message is not None and self.message.id < anchor_id:
+            self._retired_messages.append(self.message)
+            self.message = None
+            self._signature = None
         now = datetime.now(UTC)
         snapshot = self.cache.current(wall=now)
         embeds = render_status(self.config, snapshot, now)
         view = ModeView(self, snapshot) if snapshot is not None and snapshot.voting(now) else None
-        signature = payload_signature(embeds, view)
+        signature = payload_signature(embeds, view, self.config.separator_content)
         if self.message is not None and self._signature == signature:
             if view is not None:
                 view.stop()
+            await self._remove_retired_messages()
             return
         self._signature = None
         if self._view is not None:
@@ -148,7 +165,7 @@ class ScpSlCog(commands.Cog):
                 await self._create_message(embeds, view)
             else:
                 try:
-                    await edit_status_message(self.message, None, embeds, view=view)
+                    await edit_status_message(self.message, self.config.separator_content, embeds, view=view)
                 except discord.NotFound:
                     await self._create_message(embeds, view)
             if self._save_message_id and self.message is not None:
@@ -160,14 +177,33 @@ class ScpSlCog(commands.Cog):
             raise
         self._view = view
         self._signature = signature
+        await self._remove_retired_messages()
+
+    async def _remove_retired_messages(self) -> None:
+        if self._save_message_id or time.monotonic() < self._retired_retry_at:
+            return
+        for message in tuple(self._retired_messages):
+            try:
+                await message.delete()
+            except discord.NotFound:
+                pass
+            except discord.HTTPException as error:
+                logger.warning("Could not remove previous SCP:SL status message (%s)", type(error).__name__)
+                self._retired_retry_at = time.monotonic() + 30
+                return
+            self._retired_messages.remove(message)
 
     async def _create_message(self, embeds: list[discord.Embed], view: ModeView | None) -> None:
         if self.channel is None:
             raise RuntimeError("SCP:SL status channel is unavailable")
         if view is None:
-            self.message = await self.channel.send(embeds=embeds, allowed_mentions=discord.AllowedMentions.none())
+            self.message = await self.channel.send(
+                content=self.config.separator_content, embeds=embeds, allowed_mentions=discord.AllowedMentions.none()
+            )
         else:
-            self.message = await self.channel.send(embeds=embeds, view=view, allowed_mentions=discord.AllowedMentions.none())
+            self.message = await self.channel.send(
+                content=self.config.separator_content, embeds=embeds, view=view, allowed_mentions=discord.AllowedMentions.none()
+            )
         self._save_message_id = True
 
     async def _private_result(self, interaction: discord.Interaction, text: str | None = None) -> None:
