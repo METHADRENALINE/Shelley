@@ -14,6 +14,7 @@ from pydantic import (
 )
 
 from .chat_bridge.config import ChatBridgeConfig
+from .scp_sl.config import ScpSlConfig
 
 TOKEN_PLACEHOLDER = "replace-with-your-discord-bot-token"
 
@@ -436,6 +437,7 @@ class BotConfig(BaseModel):
     welcome_presence_check_seconds: int = 60
     star_forward: StarForwardConfig = Field(default_factory=StarForwardConfig)
     chat_bridge: ChatBridgeConfig = Field(default_factory=ChatBridgeConfig)
+    scp_sl: ScpSlConfig = Field(default_factory=ScpSlConfig)
     update_seconds: int = 30
     timeout_seconds: float = 3
     state_path: str = "data/state.json"
@@ -495,6 +497,7 @@ class BotConfig(BaseModel):
         errors: list[str] = []
         try:
             self.chat_bridge.validate_runtime()
+            self.scp_sl.validate_runtime()
         except ValueError as error:
             errors.append(str(error))
         if not self.database.resolved_url().strip():
