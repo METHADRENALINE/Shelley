@@ -69,6 +69,7 @@ class ShelleyBot(commands.Bot):
         intents.reactions = True
         intents.message_content = True
         intents.voice_states = True
+        intents.members = config.meow.enabled
 
         options: dict[str, Any] = {}
         if config.client_id:
@@ -82,6 +83,11 @@ class ShelleyBot(commands.Bot):
             await self.load_extension(extension)
 
         cfg = get_config()
+        if cfg.meow.enabled:
+            try:
+                await self.load_extension("shelley.meow.cog")
+            except commands.ExtensionError:
+                logger.exception("Meow could not load; continuing without its dashboard")
         dev_guild_id = cfg.dev_guild_id
         guild = discord.Object(id=int(dev_guild_id)) if dev_guild_id else None
         trademark_guilds = tuple(discord.Object(id=int(guild_id)) for guild_id in cfg.trademarks.guilds if cfg.trademarks.enabled)

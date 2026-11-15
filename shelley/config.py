@@ -208,6 +208,26 @@ class PointsConfig(BaseModel):
     leaderboard: PointsLeaderboardConfig = Field(default_factory=PointsLeaderboardConfig)
 
 
+class MeowConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    channel_id: int = Field(default=0, ge=0, lt=2**63)
+    test_mode: bool = False
+    blocked_role_id: int = Field(default=0, ge=0, lt=2**63)
+    ranks_below_role_id: int = Field(default=0, ge=0, lt=2**63)
+    ranks_above_role_id: int = Field(default=0, ge=0, lt=2**63)
+    text_points_emoji_id: int = Field(default=0, ge=0, lt=2**63)
+    voice_points_emoji_id: int = Field(default=0, ge=0, lt=2**63)
+
+    @model_validator(mode="after")
+    def validate_rank_bounds(self) -> MeowConfig:
+        upper, lower = self.ranks_below_role_id, self.ranks_above_role_id
+        if bool(upper) != bool(lower) or (upper and upper == lower):
+            raise ValueError("Meow rank placement requires two different role IDs.")
+        return self
+
+
 class TrademarkGuildConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -446,6 +466,7 @@ class BotConfig(BaseModel):
     recovery_control_cooldown_seconds: int = 60
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
     points: PointsConfig = Field(default_factory=PointsConfig)
+    meow: MeowConfig = Field(default_factory=MeowConfig)
     trademarks: TrademarksConfig = Field(default_factory=TrademarksConfig)
     servers: list[ServerConfig] = Field(default_factory=list)
     remote_targets: dict[str, RemoteTargetConfig] = Field(default_factory=dict)
@@ -522,6 +543,8 @@ class BotConfig(BaseModel):
                 errors.append("points.leaderboard.channel_id must be configured")
         if self.trademarks.enabled and not self.trademarks.guilds:
             errors.append("trademarks.guilds must contain at least one configured Discord server")
+        if self.meow.enabled and (not self.dev_guild_id or not self.meow.channel_id):
+            errors.append("meow requires dev_guild_id and meow.channel_id")
         if not self.servers:
             errors.append("servers must contain at least one server")
         if not self.status_messages:
