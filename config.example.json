@@ -112,6 +112,15 @@
       "placeholder_text": ""
     }
   },
+  "meow": {
+    "enabled": false,
+    "channel_id": 0,
+    "blocked_role_id": 0,
+    "ranks_below_role_id": 0,
+    "ranks_above_role_id": 0,
+    "text_points_emoji_id": 0,
+    "voice_points_emoji_id": 0
+  },
   "trademarks": {
     "enabled": false,
     "guilds": {
