@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock
 
 import discord
 import pytest
-from PIL import Image
+from PIL import Image, ImageChops
 from pydantic import ValidationError
 
 from shelley.bot import configure_command_scopes
@@ -20,15 +20,17 @@ from shelley.cogs.points_state import PointsStore
 from shelley.config import BotConfig, MeowConfig
 from shelley.db import Database, apply_schema
 from shelley.meow.admin_views import (
+    AccentModal,
     AdminSession,
     AdminView,
+    EraEmojiModal,
     EraModal,
     RewardModal,
     SeasonModal,
 )
-from shelley.meow.art import _paint
+from shelley.meow.art import _paint, emoji_grid
 from shelley.meow.cog import MeowCog
-from shelley.meow.era_archive import archive_embed, render_archive
+from shelley.meow.era_archive import SURFACE, archive_embed, render_archive
 from shelley.meow.models import (
     MEDAL_COLOR,
     ArchivedMedal,
@@ -36,19 +38,21 @@ from shelley.meow.models import (
     Draft,
     EraBoard,
     EraSlot,
+    Medal,
     MeowError,
     Reward,
     Season,
     SeasonDesign,
     Showcase,
     can_update_live,
+    emoji_parts,
     emoji_presentation,
     next_era_slot,
 )
 from shelley.meow.repository import SeasonRepository, StaleDraft
 from shelley.meow.roles import SeasonRoles
 from shelley.meow.service import MeowService
-from shelley.meow.showcase import SeasonShowcase
+from shelley.meow.showcase import SECRET_MEDAL_DESCRIPTION, SECRET_MEDAL_NAME, SeasonShowcase
 
 
 def reward(name: str, points: int, emoji: str = "\U0001f69c") -> Reward:
@@ -134,7 +138,72 @@ def test_server_emoji_uses_a_standard_symbol_for_the_role():
         Reward.model_validate({**card.model_dump(), "role_emoji": card.emoji})
 
 
-def test_live_edits_keep_existing_reward_roles(design):
+def test_medal_supports_emoji_sequences_without_changing_ranks(design):
+    values = design.medal.model_dump()
+    bat, tire = "\U0001f987", "\U0001f6de"
+    medal = Medal.model_validate(values | {"emoji": f"{bat} {tire} \u2708"})
+    assert medal.emoji == f"{bat}{tire}\u2708\ufe0f"
+    assert medal.role_symbol(medal=True) == medal.emoji
+    updated = design.put_reward(medal, medal=True)
+    assert SeasonDesign.model_validate_json(updated.model_dump_json()).medal == medal
+    with pytest.raises(ValidationError, match="one standard emoji"):
+        reward("Rank", 5, bat + tire)
+    with pytest.raises(ValidationError, match="only emojis"):
+        Medal.model_validate(values | {"emoji": bat + " text"})
+    with pytest.raises(ValidationError, match="100 characters"):
+        Medal.model_validate(values | {"emoji": bat * 51})
+    assert Medal.model_validate(values | {"emoji": bat * 50}).role_symbol(medal=True) == bat * 50
+
+
+def test_medal_can_mix_server_emoji_and_unicode(design):
+    custom = "<:badge:100000000000000001>"
+    bat, tire = "\U0001f987", "\U0001f6de"
+    values = design.medal.model_dump() | {"emoji": f"{bat}{custom}{tire}"}
+    medal = Medal.model_validate(values)
+    assert emoji_parts(medal.emoji) == (bat, custom, tire)
+    assert medal.role_symbol(medal=True) == f"{bat}\U0001f3c5{tire}"
+    override = Medal.model_validate(values | {"role_emoji": tire + bat})
+    assert override.role_symbol(medal=True) == tire + bat
+
+
+def test_medal_editor_saves_multiple_emojis_in_one_submission(design):
+    async def run():
+        session = SimpleNamespace(save=AsyncMock())
+        draft = Draft(design, 1, None)
+        modal = RewardModal(session, draft, design.medal, medal=True)
+        bat, tire = "\U0001f987", "\U0001f6de"
+        crest = discord.PartialEmoji(name="crest", id=100000000000000001)
+        interaction = SimpleNamespace(guild=SimpleNamespace(emojis=[crest]))
+        modal.name._value = design.medal.name
+        modal.emoji._value = f"{bat}:crest:{tire}\n{bat}{tire}"
+        modal.description._value = design.medal.description
+        modal.points._value = str(design.medal.points)
+        await modal.on_submit(interaction)
+        saved = session.save.await_args.args[2].medal
+        assert saved.key == design.medal.key
+        assert saved.emoji == f"{bat}{crest}{tire}"
+        assert saved.role_symbol(medal=True) == bat + tire
+
+    asyncio.run(run())
+
+
+def test_medal_emoji_grid_keeps_all_images_inside_their_slot():
+    first = "<:first:100000000000000001>"
+    second = "<:second:100000000000000002>"
+    sprites = {}
+    for name, color in ((first, "red"), (second, "blue")):
+        output = BytesIO()
+        Image.new("RGBA", (48, 48), color).save(output, format="PNG")
+        sprites[name] = output.getvalue()
+    grid = emoji_grid(first + second, sprites, width=120, height=64, icon_size=44)
+    assert grid.getpixel((36, 32)) == (255, 0, 0, 255)
+    assert grid.getpixel((84, 32)) == (0, 0, 255, 255)
+    long = emoji_grid((first + second) * 10, sprites, width=120, height=64, icon_size=44)
+    x1, y1, x2, y2 = long.getbbox()
+    assert 0 < x1 < x2 < 120 and 0 < y1 < y2 < 64
+
+
+def test_live_edits_allow_appearance_changes_but_not_new_rules(design):
     active = live_season(design)
     cosmetic = design.updated(name="New name", accent=0x123456)
     assert can_update_live(Draft(cosmetic, 4, active.id), active)
@@ -176,6 +245,8 @@ def test_editor_controls_stay_private_and_use_flat_workflow(design):
         buttons = {child["label"]: child for row in components if row["type"] == 1 for child in row["components"] if child["type"] == 2}
         assert {
             "Settings",
+            "Era emoji",
+            "Accent color",
             "Add rank",
             "Preview",
             "Post showcase",
@@ -200,14 +271,20 @@ def test_editor_controls_stay_private_and_use_flat_workflow(design):
         assert interaction.response.send_message.await_args.kwargs["ephemeral"]
         interaction.user.id = 99
         assert not await session.check(interaction)
-        settings = SeasonModal(session, draft).to_components()
+        url = "https://example.com/banner.png"
+        settings = SeasonModal(session, replace(draft, design=design.updated(banner_url=url))).to_components()
         assert [item["label"] for item in settings] == [
             "Season name",
             "Season emoji",
             "Introduction",
+            "Season banner",
             "Point source",
-            "Accent color",
         ]
+        assert settings[3]["component"]["value"] == url
+        assert not settings[3]["component"]["required"]
+        accent = AccentModal(session, draft).to_components()
+        assert accent[0]["label"] == "Accent color"
+        assert accent[0]["component"]["value"] == f"#{design.accent:06X}"
         reward_fields = RewardModal(session, draft).to_components()
         assert [item["label"] for item in reward_fields][:4] == [
             "Name",
@@ -224,6 +301,41 @@ def test_editor_controls_stay_private_and_use_flat_workflow(design):
         ]
         active.stop()
         view.stop()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://example.com/banner.png",
+        "attachment://banner.png",
+        "https://user:secret@example.com/banner.png",
+        "https://",
+        "https://exam\tple.com/banner.png",
+    ],
+)
+def test_invalid_banner_url_is_rejected(design, url):
+    with pytest.raises(ValidationError, match="direct HTTPS image URL"):
+        design.updated(banner_url=url)
+
+
+def test_season_banner_renders_in_the_header_without_an_extra_attachment(design):
+    async def run():
+        url = "https://example.com/banner.webp?raw=1"
+        updated = design.updated(introduction="Welcome", banner_url=url)
+        assert SeasonDesign.model_validate_json(updated.model_dump_json()).banner_url == url
+        assert updated.updated(banner_url=" ").banner_url is None
+        show = SeasonShowcase(Mock(), Mock(), MeowConfig(channel_id=3))
+        for season in (None, live_season(updated)):
+            rendered = await show.render(updated, season)
+            try:
+                header = rendered.view.to_components()[0]["components"]
+                assert header[0]["content"].endswith("\n\nWelcome")
+                assert header[1]["items"][0]["media"]["url"] == url
+                assert len(rendered.files) == len(updated.rewards)
+            finally:
+                rendered.close()
 
     asyncio.run(run())
 
@@ -255,6 +367,72 @@ def test_cards_render_and_showcase_fits_discord_component_limits(design):
             rendered.close()
 
     asyncio.run(run())
+
+
+def test_medal_stays_secret_until_the_award_is_saved(design):
+    async def run():
+        medal = Medal.model_validate(
+            design.medal.model_dump() | {"name": "Moon medal", "description": "Hidden details", "emoji": "\U0001f987\U0001f6de"}
+        )
+        updated = design.put_reward(medal, medal=True)
+        bot = SimpleNamespace(get_user=Mock(), fetch_user=AsyncMock())
+        show = SeasonShowcase(bot, Mock(), MeowConfig(channel_id=3))
+        show.renderer.cards = AsyncMock(wraps=show.renderer.cards)
+        for state in ("preview", "active", "awarding", "cancelled"):
+            season = None if state == "preview" else live_season(updated, state=state, winner_id=7 if state == "awarding" else None)
+            hidden = await show.render(updated, season)
+            try:
+                content = str(hidden.view.to_components())
+                assert SECRET_MEDAL_DESCRIPTION in content
+                assert not any(secret in content for secret in ("Moon medal", "Hidden details", "<@7>"))
+                card = show.renderer.cards.await_args.args[0][-1]
+                assert card.name == SECRET_MEDAL_NAME and card.emoji == "\U0001f3c5"
+                assert card.points == medal.points
+                if season is not None:
+                    assert f"<@&{season.roles[medal.key]}>" not in content
+            finally:
+                hidden.close()
+        won = live_season(updated, state="finished", winner_id=7, winner_username="account_name")
+        result = await show.render(updated, won)
+        try:
+            content = str(result.view.to_components())
+            assert "Moon medal" in content and "Hidden details" in content
+            assert "account_name" in content and SECRET_MEDAL_DESCRIPTION not in content
+            assert "<@7>" not in content
+            assert show.renderer.cards.await_args.kwargs["winner_username"] == "account_name"
+            bot.get_user.assert_not_called()
+            bot.fetch_user.assert_not_awaited()
+        finally:
+            result.close()
+
+    asyncio.run(run())
+
+
+def test_legacy_finished_medal_uses_username_not_display_name(design):
+    async def run():
+        user = SimpleNamespace(name="legacy_account", display_name="Server Nick")
+        bot = SimpleNamespace(get_user=Mock(return_value=None), fetch_user=AsyncMock(return_value=user))
+        show = SeasonShowcase(bot, Mock(), MeowConfig(channel_id=3))
+        legacy = live_season(design, state="finished", winner_id=7)
+        rendered = await show.render(design, legacy)
+        try:
+            content = str(rendered.view.to_components())
+            assert "legacy_account" in content and "Server Nick" not in content
+        finally:
+            rendered.close()
+        bot.fetch_user.assert_awaited_once_with(7)
+
+    asyncio.run(run())
+
+
+def test_winner_is_drawn_below_the_medal_title(design):
+    left, right = (
+        Image.open(BytesIO(_paint(design.medal, "text", design.accent, None, None, username))).convert("RGB")
+        for username in ("first_account", "second_account")
+    )
+    bbox = ImageChops.difference(left, right).getbbox()
+    assert bbox is not None
+    assert 153 <= bbox[1] < bbox[3] < 212
 
 
 def test_showcase_header_uses_the_current_guild_emoji_names(design):
@@ -310,6 +488,62 @@ def test_partial_era_has_its_own_image_and_custom_medal_fallback():
     image = Image.open(BytesIO(render_archive(rows, {}, era=2)))
     assert image.size == (768, 208)
     assert archive_embed(2).image.url == "attachment://meow-era-2.png"
+
+
+def test_optional_era_emoji_lines_up_with_season_icons():
+    icon = "<:era:100000000000000001>"
+    output = BytesIO()
+    Image.new("RGBA", (48, 48), "red").save(output, format="PNG")
+    rows = [ArchivedMedal(1, 7, "winner", 101, "\U0001f3c5", icon)]
+    sprites = {icon: output.getvalue()}
+    plain = Image.open(BytesIO(render_archive(rows, sprites, era=2)))
+    with_icon = Image.open(BytesIO(render_archive(rows, sprites, era=2, era_emoji=icon)))
+    assert plain.size == with_icon.size
+    assert with_icon.getpixel((68, 45)) == with_icon.getpixel((68, 139)) == (255, 0, 0, 255)
+    assert plain.getpixel((68, 45)) != with_icon.getpixel((68, 45))
+    assert plain.crop((0, 80, 768, 208)).tobytes() == with_icon.crop((0, 80, 768, 208)).tobytes()
+    assert render_archive(rows, {}, era=2, era_emoji=icon) == render_archive(rows, {}, era=2)
+
+
+def test_final_act_without_icon_uses_left_space_for_both_lines():
+    rows = [
+        ArchivedMedal(1, 7, "winner", 101, "\U0001f3c5", None),
+        ArchivedMedal(6, 8, "winner", 102, "\U0001f3c5", None),
+    ]
+    board = Image.open(BytesIO(render_archive(rows, {})))
+    assert set(board.crop((44, 110, 100, 170)).getdata()) == {(*SURFACE, 255)}
+    assert len(set(board.crop((44, 198, 100, 224)).getdata())) > 1
+    assert len(set(board.crop((44, 228, 100, 256)).getdata())) > 1
+
+
+def test_era_emoji_editor_saves_and_clears_the_selected_era(design):
+    async def run():
+        dashboard = Dashboard(Draft(design, 1, None), None, None, None, EraSlot(era=2, stage=1))
+        session = SimpleNamespace(save_era_emoji=AsyncMock())
+        modal = EraEmojiModal(session, dashboard)
+        assert modal.to_components()[0]["component"]["value"] == "2"
+        interaction = SimpleNamespace(guild=None)
+        modal.era._value = "1"
+        modal.emoji._value = "\U0001f31f"
+        await modal.on_submit(interaction)
+        session.save_era_emoji.assert_awaited_with(interaction, 1, "\U0001f31f")
+        modal.emoji._value = ""
+        await modal.on_submit(interaction)
+        session.save_era_emoji.assert_awaited_with(interaction, 1, None)
+
+    asyncio.run(run())
+
+
+def test_era_emoji_is_guild_scoped_and_survives_posting_the_board(database):
+    repo = SeasonRepository(database)
+    guild, era, emoji = 83, 2, "\U0001f31f"
+    repo.set_era_emoji(guild, era, emoji)
+    assert repo.era_boards(guild) == {era: EraBoard(None, None, None, emoji)}
+    assert repo.era_boards(guild + 1) == {}
+    repo.save_era_board(guild, era, 22, 200, "first")
+    assert repo.era_boards(guild)[era] == EraBoard(22, 200, "first", emoji)
+    repo.set_era_emoji(guild, era, None)
+    assert repo.era_boards(guild)[era] == EraBoard(22, 200, "first")
 
 
 def test_era_modal_shows_automatic_and_all_stages(design):
@@ -409,7 +643,8 @@ def test_era_board_retries_failed_save_and_edits_one_message():
             await show.sync(guild, None)
 
         def save_board(_guild, era, channel_id, message_id, signature):
-            boards[era] = EraBoard(channel_id, message_id, signature)
+            emoji = boards[era].emoji if era in boards else None
+            boards[era] = EraBoard(channel_id, message_id, signature, emoji)
 
         repo.save_era_board.side_effect = save_board
         await show.sync(guild, None)
@@ -420,6 +655,16 @@ def test_era_board_retries_failed_save_and_edits_one_message():
         await show.sync(guild, None)
         assert boards[2].message_id == 50
         message.edit.assert_awaited_once()
+        signature = boards[2].signature
+        boards[2] = replace(boards[2], emoji="\U0001f31f")
+        await show.sync(guild, None)
+        await show.sync(guild, None)
+        assert boards[2].message_id == 50 and boards[2].signature != signature
+        assert message.edit.await_count == 2
+        boards[2] = replace(boards[2], emoji=None)
+        await show.sync(guild, None)
+        assert boards[2].signature == signature
+        assert message.edit.await_count == 3
         channel.send.assert_awaited_once()
 
     asyncio.run(run())
@@ -816,7 +1061,8 @@ def test_existing_balances_claim_one_medal_without_spending_points(database, des
     assert frozen.winner_id == 20
     assert repo.pending_ranks(season.id) == []
     repo.finish(season.id, "winner")
-    assert repo.dashboard(guild_id).latest.state == "finished"
+    saved = repo.dashboard(guild_id).latest
+    assert saved.state == "finished" and saved.winner_username == "winner"
     assert store.get_user(guild_id, 20).text_points == 500
     assert store.get_user(guild_id, 22).voice_points == 700
 

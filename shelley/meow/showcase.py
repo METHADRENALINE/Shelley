@@ -11,11 +11,12 @@ from discord.ext import commands
 
 from ..config import MeowConfig
 from .art import CardRenderer
-from .era_archive import archive_embed, archive_file
+from .era_archive import archive_embed, archive_file, final_act_without_icon
 from .models import (
     CUSTOM_EMOJI,
     FINAL_STAGE,
     MEDAL_COLOR,
+    MEDAL_SYMBOL,
     ArchivedMedal,
     EraBoard,
     MeowError,
@@ -28,6 +29,11 @@ from .models import (
 from .repository import SeasonRepository
 
 NO_MENTIONS = discord.AllowedMentions.none()
+SECRET_MEDAL_NAME = "\u0422\u0430\u0439\u043d\u0430\u044f \u043c\u0435\u0434\u0430\u043b\u044c"
+SECRET_MEDAL_DESCRIPTION = (
+    "\u041f\u0435\u0440\u0432\u044b\u0439 \u0443\u0447\u0430\u0441\u0442\u043d\u0438\u043a, \u043a\u043e\u0442\u043e\u0440\u044b\u0439 \u0434\u043e\u0441\u0442\u0438\u0433\u043d\u0435\u0442 \u043f\u043e\u0440\u043e\u0433\u0430 \u0441\u0435\u0437\u043e\u043d\u0430, \u043f\u043e\u043b\u0443\u0447\u0430\u0435\u0442 \u0442\u0430\u0439\u043d\u0443\u044e \u043c\u0435\u0434\u0430\u043b\u044c, "
+    "\u0430 \u0435\u0433\u043e \u043d\u0438\u043a \u043d\u0430 \u0441\u0435\u0440\u0432\u0435\u0440\u0435 \u0431\u0443\u0434\u0435\u0442 \u043e\u043a\u0440\u0430\u0448\u0435\u043d \u0432 \u0430\u043b\u044b\u0439 \u043f\u0435\u0440\u043c\u0430\u043d\u0435\u043d\u0442\u043d\u043e!"
+)
 SOURCE_RU = {
     "text": "\u0422\u0435\u043a\u0441\u0442\u043e\u0432\u044b\u0435 \u043e\u0447\u043a\u0438",
     "voice": "\u0413\u043e\u043b\u043e\u0441\u043e\u0432\u044b\u0435 \u043e\u0447\u043a\u0438",
@@ -114,6 +120,7 @@ class SeasonShowcase:
         season: Season | None = None,
         *,
         guild: discord.Guild | None = None,
+        reveal_medal: bool = False,
     ) -> RenderedShowcase:
         state = season.state if season else "preview"
         point_id = self.config.text_points_emoji_id if design.source == "text" else self.config.voice_points_emoji_id
@@ -126,23 +133,40 @@ class SeasonShowcase:
                 else f"\u0421\u0435\u0437\u043e\u043d {slot.stage}"
             )
             subtitle += f"\n-# {era_title(slot.era)}  \u00b7  {stage}"
-        if season and season.winner_id:
-            subtitle += f"\n<@{season.winner_id}>"
         title = safe_display(design.name or "\u041d\u043e\u0432\u044b\u0439 \u0441\u0435\u0437\u043e\u043d")
         icon = season_icon(guild, design.emoji)
         header = f"## {icon + ' ' if icon else ''}{title}\n-# {subtitle}"
         if design.introduction:
             header += f"\n\n{design.introduction}"
         view = discord.ui.LayoutView(timeout=None)
-        view.add_item(discord.ui.Container(discord.ui.TextDisplay(header), accent_color=design.accent))
-        images = await self.renderer.cards(design.rewards, design.source, design.accent, design.medal.key if design.medal else None)
+        heading: discord.ui.Container[discord.ui.LayoutView] = discord.ui.Container(
+            discord.ui.TextDisplay(header), accent_color=design.accent
+        )
+        if design.banner_url is not None:
+            heading.add_item(discord.ui.MediaGallery(discord.MediaGalleryItem(design.banner_url)))
+        view.add_item(heading)
+        medal_key = design.medal.key if design.medal else None
+        rewards = design.rewards
+        if design.medal is not None and state != "finished" and not reveal_medal:
+            placeholder = design.medal.model_copy(
+                update={
+                    "name": SECRET_MEDAL_NAME,
+                    "emoji": MEDAL_SYMBOL,
+                    "role_emoji": None,
+                    "description": SECRET_MEDAL_DESCRIPTION,
+                }
+            )
+            rewards = (*design.ordered_ranks, placeholder)
+        winner = await self._winner_username(season) if season and state == "finished" else None
+        images = await self.renderer.cards(rewards, design.source, design.accent, medal_key, winner_username=winner)
         files: list[discord.File] = []
-        for index, (reward, image) in enumerate(zip(design.rewards, images, strict=True), 1):
+        for index, (reward, image) in enumerate(zip(rewards, images, strict=True), 1):
             filename = f"meow-{index}.png"
-            alt = f"{reward.name} \u00b7 {number(reward.points)} \u00b7 {russian_points(design.source)}"
-            role_id = season.roles.get(reward.key) if season else None
+            medal = reward.key == medal_key
+            caption = f"{reward.name} \u00b7 {winner}" if medal and winner else reward.name
+            alt = f"{caption} \u00b7 {number(reward.points)} \u00b7 {russian_points(design.source)}"
+            role_id = season.roles.get(reward.key) if season and not medal else None
             role_line = f"-# <@&{role_id}>\n" if role_id and state in ("active", "awarding") else ""
-            medal = design.medal is not None and reward.key == design.medal.key
             view.add_item(
                 discord.ui.Container(
                     discord.ui.MediaGallery(discord.MediaGalleryItem(f"attachment://{filename}", description=alt)),
@@ -152,6 +176,17 @@ class SeasonShowcase:
             )
             files.append(discord.File(BytesIO(image), filename=filename, description=alt))
         return RenderedShowcase(view, files)
+
+    async def _winner_username(self, season: Season) -> str | None:
+        if season.winner_username or season.winner_id is None:
+            return season.winner_username
+        user = self.bot.get_user(season.winner_id)
+        if user is None:
+            try:
+                user = await self.bot.fetch_user(season.winner_id)
+            except discord.NotFound:
+                return None
+        return user.name
 
     async def sync(self, guild: discord.Guild, season: Season | None) -> None:
         async with self._publish_lock:
@@ -168,6 +203,8 @@ class SeasonShowcase:
         current = (
             same_channel
             and saved.message_id is not None
+            and self._message is not None
+            and self._message.id == saved.message_id
             and saved.season_id == season.id
             and saved.revision == season.revision
             and archived_first
@@ -299,7 +336,15 @@ class SeasonShowcase:
         rows: list[ArchivedMedal],
         saved: EraBoard | None,
     ) -> int:
-        payload = json.dumps([asdict(row) for row in rows], sort_keys=True)
+        emoji = saved.emoji if saved is not None else None
+        board_rows = [asdict(row) for row in rows]
+        align_final_left = any(final_act_without_icon(row) for row in rows)
+        payload_data: object
+        if align_final_left:
+            payload_data = {"rows": board_rows, "emoji": emoji, "final_act_left": True}
+        else:
+            payload_data = {"rows": board_rows, "emoji": emoji} if emoji else board_rows
+        payload = json.dumps(payload_data, sort_keys=True)
         signature = blake2s(payload.encode()).hexdigest()
         message = self._archive_messages.get(era)
         if saved is not None and saved.channel_id == channel.id and saved.message_id is not None:
@@ -308,7 +353,7 @@ class SeasonShowcase:
             if message is not None and saved.signature == signature:
                 self._archive_messages[era] = message
                 return message.id
-            if message is not None and saved.signature is None and era == 1 and len(rows) == 6:
+            if message is not None and saved.signature is None and not emoji and not align_final_left and era == 1 and len(rows) == 6:
                 await asyncio.to_thread(
                     self.repository.save_era_board,
                     channel.guild.id,
@@ -327,7 +372,7 @@ class SeasonShowcase:
             if pending[1] == signature:
                 await self._remember_era_board(channel, era, message, signature)
                 return message.id
-        file = await archive_file(rows, era=era)
+        file = await archive_file(rows, era=era, era_emoji=emoji)
         embed = archive_embed(era)
         try:
             if message is not None:

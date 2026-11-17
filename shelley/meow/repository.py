@@ -47,6 +47,7 @@ def _season(row: dict[str, Any]) -> Season:
         winner_id=row["winner_id"],
         test_user_id=row["test_user_id"],
         cleaned=row["cleaned"],
+        winner_username=row["winner_username"],
     )
 
 
@@ -633,12 +634,31 @@ class SeasonRepository:
     def era_boards(self, guild_id: int) -> dict[int, EraBoard]:
         rows = self.db.fetchall(
             """
-            SELECT era, channel_id, message_id, signature
-            FROM shelley_meow_era_boards WHERE guild_id = %s
+            SELECT era, channel_id, message_id, signature, emoji
+            FROM shelley_meow_era_boards
+            FULL JOIN shelley_meow_era_icons USING (guild_id, era)
+            WHERE guild_id = %s
             """,
             (guild_id,),
         )
-        return {row["era"]: EraBoard(row["channel_id"], row["message_id"], row["signature"]) for row in rows}
+        return {row["era"]: EraBoard(row["channel_id"], row["message_id"], row["signature"], row["emoji"]) for row in rows}
+
+    def set_era_emoji(self, guild_id: int, era: int, emoji: str | None) -> None:
+        with self.db.connection() as conn:
+            if emoji is None:
+                conn.execute(
+                    "DELETE FROM shelley_meow_era_icons WHERE guild_id = %s AND era = %s",
+                    (guild_id, era),
+                )
+                return
+            self._lock_guild(conn, guild_id)
+            conn.execute(
+                """
+                INSERT INTO shelley_meow_era_icons (guild_id, era, emoji) VALUES (%s, %s, %s)
+                ON CONFLICT (guild_id, era) DO UPDATE SET emoji = EXCLUDED.emoji
+                """,
+                (guild_id, era, emoji),
+            )
 
     def save_era_board(self, guild_id: int, era: int, channel_id: int, message_id: int, signature: str | None) -> None:
         self.db.execute(

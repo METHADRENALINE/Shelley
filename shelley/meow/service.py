@@ -70,7 +70,7 @@ class MeowService:
             raise MeowError(f"{draft.design.source.title()} points are disabled.")
         self.roles.check_hierarchy(guild)
         await self.showcase.channel(guild)
-        rendered = await self.showcase.render(draft.design, guild=guild)
+        rendered = await self.showcase.render(draft.design, guild=guild, reveal_medal=True)
         rendered.close()
 
     async def _step(self, label: str, action: Callable[[], Awaitable[None]]) -> None:
@@ -96,7 +96,7 @@ class MeowService:
 
     async def _prepare(self, guild: discord.Guild, season: Season) -> None:
         await self.showcase.channel(guild)
-        rendered = await self.showcase.render(season.design, guild=guild)
+        rendered = await self.showcase.render(season.design, guild=guild, reveal_medal=True)
         rendered.close()
         await self.roles.ensure(guild, season)
         await asyncio.to_thread(self.repository.activate, guild.id, season.id)
