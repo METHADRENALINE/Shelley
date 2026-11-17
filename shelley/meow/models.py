@@ -7,7 +7,15 @@ from typing import Literal
 from uuid import uuid4
 
 import regex
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    HttpUrl,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 PointSource = Literal["text", "voice"]
 SeasonState = Literal["preparing", "active", "awarding", "finished", "cancelled"]
@@ -15,10 +23,15 @@ MAX_RANKS = 9
 MAX_SHOWCASE_TEXT = 3600
 MAX_POINTS = 1_000_000_000
 MAX_REWARD_NAME_LENGTH = 70
+MAX_BANNER_URL_LENGTH = 2048
+MAX_MEDAL_EMOJI_LENGTH = 512
+MAX_ROLE_NAME_LENGTH = 100
 MEDAL_COLOR = 0xFF6565
+MEDAL_SYMBOL = "\U0001f3c5"
 DEFAULT_ACCENT = 0x408871
 FINAL_STAGE = 6
 CUSTOM_EMOJI = re.compile(r"<a?:[A-Za-z0-9_]{2,32}:([0-9]{17,20})>")
+EMOJI_PART = regex.compile(rf"{CUSTOM_EMOJI.pattern}|\X")
 EMOJI_ELEMENT = r"[\p{Emoji}&&\p{Extended_Pictographic}]\ufe0f?\p{Emoji_Modifier}?"
 ROLE_EMOJI = regex.compile(
     rf"(?V1)(?:\p{{Regional_Indicator}}{{2}}|[#*0-9]\ufe0f?\u20e3|"
@@ -46,6 +59,22 @@ def emoji_presentation(value: str) -> str:
 
 def validate_emoji(value: str) -> str:
     return value if CUSTOM_EMOJI.fullmatch(value) else emoji_presentation(value)
+
+
+def emoji_parts(value: str) -> tuple[str, ...]:
+    return tuple(match[0] for match in EMOJI_PART.finditer(value) if not match[0].isspace())
+
+
+def emoji_sequence(value: str, *, allow_custom: bool) -> str:
+    parse = validate_emoji if allow_custom else emoji_presentation
+    try:
+        parts = emoji_parts(value)
+        if parts:
+            return "".join(map(parse, parts))
+    except MeowError:
+        pass
+    kind = "" if allow_custom else " standard"
+    raise MeowError(f"Use only{kind} emojis in the medal field.")
 
 
 def parse_color(value: str, default: int) -> int:
@@ -94,8 +123,10 @@ class Reward(BaseModel):
     def role_symbol(self, *, medal: bool) -> str:
         if self.role_emoji is not None:
             return self.role_emoji
+        if medal:
+            return "".join(MEDAL_SYMBOL if CUSTOM_EMOJI.fullmatch(part) else part for part in emoji_parts(self.emoji))
         if CUSTOM_EMOJI.fullmatch(self.emoji):
-            return "\U0001f3c5" if medal else "\U0001f431"
+            return "\U0001f431"
         return self.emoji
 
     @field_validator("description")
@@ -104,6 +135,31 @@ class Reward(BaseModel):
         if "\0" in value:
             raise ValueError("Descriptions cannot contain null characters.")
         return value
+
+
+class Medal(Reward):
+    emoji: str = Field(min_length=1, max_length=MAX_MEDAL_EMOJI_LENGTH)
+    role_emoji: str | None = Field(default=None, max_length=MAX_ROLE_NAME_LENGTH)
+
+    @field_validator("emoji")
+    @classmethod
+    def one_emoji(cls, value: str) -> str:
+        normalized = emoji_sequence(value, allow_custom=True)
+        if len(normalized) > MAX_MEDAL_EMOJI_LENGTH:
+            raise ValueError("The medal emoji field is too long.")
+        return normalized
+
+    @field_validator("role_emoji")
+    @classmethod
+    def one_role_emoji(cls, value: str | None) -> str | None:
+        return emoji_sequence(value, allow_custom=False) if value is not None else None
+
+    @model_validator(mode="after")
+    def validate_role_length(self) -> Medal:
+        role_name = self.role_symbol(medal=True)
+        if len(role_name.encode("utf-16-le")) // 2 > MAX_ROLE_NAME_LENGTH:
+            raise ValueError("The medal role name must fit within 100 characters.")
+        return self
 
 
 class EraSlot(BaseModel):
@@ -158,10 +214,18 @@ class SeasonDesign(BaseModel):
     emoji: str | None = Field(default=None, max_length=64)
     era_slot: EraSlot | None = None
     introduction: str = Field(default="", max_length=800)
+    banner_url: str | None = Field(default=None, max_length=MAX_BANNER_URL_LENGTH)
     source: PointSource = "text"
     accent: int = Field(default=DEFAULT_ACCENT, ge=0, le=0xFFFFFF)
     ranks: tuple[Reward, ...] = Field(default=(), max_length=MAX_RANKS)
-    medal: Reward | None = None
+    medal: Medal | None = None
+
+    @field_validator("medal", mode="before")
+    @classmethod
+    def reward_to_medal(cls, value: object) -> object:
+        if isinstance(value, Reward) and not isinstance(value, Medal):
+            return value.model_dump()
+        return value
 
     @field_validator("emoji")
     @classmethod
@@ -169,6 +233,20 @@ class SeasonDesign(BaseModel):
         if value is not None and not CUSTOM_EMOJI.fullmatch(value):
             raise ValueError("The season icon must be a server emoji.")
         return value
+
+    @field_validator("banner_url")
+    @classmethod
+    def valid_banner_url(cls, value: str | None) -> str | None:
+        if not value:
+            return None
+        error = "Use a direct HTTPS image URL for the season banner."
+        try:
+            url = HttpUrl(value)
+        except ValidationError:
+            raise ValueError(error) from None
+        if url.scheme != "https" or url.username is not None or url.password is not None or re.search(r"[\s\x00-\x1f\x7f]", value):
+            raise ValueError(error)
+        return str(url)
 
     @model_validator(mode="after")
     def validate_rewards(self) -> SeasonDesign:
@@ -248,6 +326,7 @@ class Season:
     winner_id: int | None
     test_user_id: int | None
     cleaned: bool
+    winner_username: str | None = None
 
 
 @dataclass(frozen=True)
@@ -286,6 +365,7 @@ class EraBoard:
     channel_id: int | None
     message_id: int | None
     signature: str | None
+    emoji: str | None = None
 
 
 @dataclass(frozen=True)

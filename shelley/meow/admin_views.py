@@ -12,19 +12,25 @@ from pydantic import ValidationError
 
 from ..security import require_administrator
 from .models import (
+    CUSTOM_EMOJI,
     FINAL_STAGE,
+    MAX_BANNER_URL_LENGTH,
+    MAX_MEDAL_EMOJI_LENGTH,
     MAX_POINTS,
     MAX_RANKS,
     MAX_REWARD_NAME_LENGTH,
+    MAX_ROLE_NAME_LENGTH,
     MEDAL_COLOR,
     Dashboard,
     Draft,
     EraSlot,
+    Medal,
     MeowError,
     PointSource,
     Reward,
     SeasonDesign,
     can_update_live,
+    era_title,
     number,
     parse_color,
     validate_emoji,
@@ -34,20 +40,26 @@ from .showcase import NO_MENTIONS, safe_display, season_icon
 
 Action = Literal["publish", "update", "replace", "end", "cancel_setup", "empty", "copy", "delete", "post_draft"]
 logger = logging.getLogger(__name__)
+EMOJI_ALIAS = re.compile(r":([A-Za-z0-9_]{2,32}):")
+EMOJI_OR_ALIAS = re.compile(rf"{CUSTOM_EMOJI.pattern}|{EMOJI_ALIAS.pattern}")
 
 
 def validate_input(error: ValidationError) -> str:
     return error.errors(include_input=False, include_url=False, include_context=False)[0]["msg"].removeprefix("Value error, ")
 
 
-def resolve_emoji(guild: discord.Guild | None, value: str) -> str:
+def resolve_emoji_alias(guild: discord.Guild | None, value: str) -> str:
     value = value.strip()
-    alias = re.fullmatch(r":([A-Za-z0-9_]{2,32}):", value)
+    alias = EMOJI_ALIAS.fullmatch(value)
     if alias and guild is not None:
         emoji = discord.utils.get(guild.emojis, name=alias[1])
         if emoji is not None:
             value = str(emoji)
-    return validate_emoji(value)
+    return value
+
+
+def resolve_emoji(guild: discord.Guild | None, value: str) -> str:
+    return validate_emoji(resolve_emoji_alias(guild, value))
 
 
 async def private_message(interaction: discord.Interaction, message: str) -> None:
@@ -126,6 +138,14 @@ class AdminSession:
             await interaction.edit_original_response(view=rendered.view, attachments=rendered.files, allowed_mentions=NO_MENTIONS)
         finally:
             rendered.close()
+
+    async def save_era_emoji(self, interaction: discord.Interaction, era: int, emoji: str | None) -> None:
+        await interaction.response.defer()
+        async with self.lock:
+            await asyncio.to_thread(self.service.repository.set_era_emoji, self.guild_id, era, emoji)
+            self.service.wake(retry=True)
+            status = "saved" if emoji else "removed"
+            await self.refresh(f"{era_title(era)} emoji {status}.")
 
     async def confirm(
         self,
@@ -355,6 +375,7 @@ class AdminView(ui.LayoutView):
         surface.add_item(
             ui.ActionRow(
                 self.button("Settings", self.settings, discord.ButtonStyle.secondary),
+                self.button("Accent color", self.accent),
                 self.button("Stage", self.era),
                 self.button("Add rank", self.new_rank, disabled=len(design.ranks) >= MAX_RANKS),
                 self.button("Set medal" if design.medal is None else "Edit medal", self.medal),
@@ -387,7 +408,11 @@ class AdminView(ui.LayoutView):
         surface.add_item(ui.Separator())
         surface.add_item(
             ui.ActionRow(
-                self.button("Preview", self.preview, disabled=not design.rewards and not design.name),
+                self.button(
+                    "Preview",
+                    self.preview,
+                    disabled=not (design.rewards or design.name or design.introduction or design.banner_url),
+                ),
                 self.button(
                     {
                         "update": "Publish changes",
@@ -399,6 +424,7 @@ class AdminView(ui.LayoutView):
                     disabled=bool(missing or unchanged or pending or (live and live.state == "awarding")),
                 ),
                 self.button("Refresh", self.refresh),
+                self.button("Era emoji", self.era_emoji),
             )
         )
         manage = [self.button("Blank draft", self.blank)]
@@ -438,8 +464,14 @@ class AdminView(ui.LayoutView):
     async def settings(self, interaction: discord.Interaction) -> None:
         await interaction.response.send_modal(SeasonModal(self.session, self.draft))
 
+    async def accent(self, interaction: discord.Interaction) -> None:
+        await interaction.response.send_modal(AccentModal(self.session, self.draft))
+
     async def era(self, interaction: discord.Interaction) -> None:
         await interaction.response.send_modal(EraModal(self.session, self.snapshot))
+
+    async def era_emoji(self, interaction: discord.Interaction) -> None:
+        await interaction.response.send_modal(EraEmojiModal(self.session, self.snapshot))
 
     async def new_rank(self, interaction: discord.Interaction) -> None:
         await interaction.response.send_modal(RewardModal(self.session, self.draft))
@@ -588,6 +620,35 @@ class EraModal(EditorModal):
         await self.session.save(interaction, self.draft, self.draft.design.updated(era_slot=slot))
 
 
+class EraEmojiModal(EditorModal):
+    def __init__(self, session: AdminSession, dashboard: Dashboard) -> None:
+        super().__init__("Era emoji", session, dashboard.draft)
+        slot = dashboard.draft_slot
+        self.era = self.field("Era number", str(slot.era) if slot else "", 4)
+        self.emoji = self.field(
+            "Era emoji",
+            "",
+            64,
+            required=False,
+            description="One emoji. Leave blank to remove it from this era.",
+        )
+
+    async def on_submit(self, interaction: discord.Interaction, /) -> None:
+        raw = self.era.value.strip()
+        try:
+            if not re.fullmatch(r"[0-9]{1,4}", raw) or not 1 <= int(raw) <= 3999:
+                raise MeowError("Enter an era number from 1 to 3999.")
+            emoji = resolve_emoji(interaction.guild, self.emoji.value) if self.emoji.value.strip() else None
+            if emoji and CUSTOM_EMOJI.fullmatch(emoji):
+                emoji = season_icon(interaction.guild, emoji)
+                if emoji is None:
+                    raise MeowError("Choose an available emoji from this server.")
+        except MeowError as exc:
+            await private_message(interaction, str(exc))
+            return
+        await self.session.save_era_emoji(interaction, int(raw), emoji)
+
+
 class SeasonModal(EditorModal):
     def __init__(self, session: AdminSession, draft: Draft) -> None:
         super().__init__("Season settings", session, draft)
@@ -595,6 +656,13 @@ class SeasonModal(EditorModal):
         self.name = self.field("Season name", design.name, 80)
         self.emoji = self.field("Season emoji", design.emoji or "", 64, required=False)
         self.intro = self.field("Introduction", design.introduction, 800, paragraph=True, required=False)
+        self.banner = self.field(
+            "Season banner",
+            design.banner_url or "",
+            MAX_BANNER_URL_LENGTH,
+            required=False,
+            description="Direct HTTPS image URL",
+        )
         self.source: ui.RadioGroup[SeasonModal] = ui.RadioGroup(
             options=[
                 discord.RadioGroupOption(label="Text points", value="text", default=design.source == "text"),
@@ -602,7 +670,6 @@ class SeasonModal(EditorModal):
             ]
         )
         self.add_item(ui.Label(text="Point source", component=self.source))
-        self.color = self.field("Accent color", f"#{design.accent:06X}", 7, required=False)
 
     async def on_submit(self, interaction: discord.Interaction, /) -> None:
         try:
@@ -620,13 +687,27 @@ class SeasonModal(EditorModal):
                 name=name,
                 emoji=emoji,
                 introduction=self.intro.value,
+                banner_url=self.banner.value,
                 source=source,
-                accent=parse_color(self.color.value, old.accent),
             )
         except ValueError as exc:
             await private_message(interaction, validate_input(exc) if isinstance(exc, ValidationError) else str(exc))
             return
         await self.session.save(interaction, self.draft, design)
+
+
+class AccentModal(EditorModal):
+    def __init__(self, session: AdminSession, draft: Draft) -> None:
+        super().__init__("Accent color", session, draft)
+        self.color = self.field("Accent color", f"#{draft.design.accent:06X}", 7, required=False)
+
+    async def on_submit(self, interaction: discord.Interaction, /) -> None:
+        try:
+            color = parse_color(self.color.value, self.draft.design.accent)
+        except MeowError as exc:
+            await private_message(interaction, str(exc))
+            return
+        await self.session.save(interaction, self.draft, self.draft.design.updated(accent=color))
 
 
 class RewardModal(EditorModal):
@@ -646,9 +727,13 @@ class RewardModal(EditorModal):
         self.emoji = self.field(
             "Emoji",
             emojis,
-            129,
+            MAX_MEDAL_EMOJI_LENGTH + 1 + MAX_ROLE_NAME_LENGTH if medal else 129,
             paragraph=True,
-            description="Card emoji on the first line. Optional standard role emoji on the second.",
+            description=(
+                "Card emojis on the first line. Optional standard role emojis on the second."
+                if medal
+                else "Card emoji on the first line. Optional standard role emoji on the second."
+            ),
         )
         self.points = self.field("Points required", str(reward.points) if reward else "", 16)
         self.description = self.field("Description", reward.description if reward else "", 1000, paragraph=True)
@@ -671,11 +756,16 @@ class RewardModal(EditorModal):
                 raise MeowError(f"Enter between 1 and {number(MAX_POINTS)} points.")
             emojis = self.emoji.value.strip().splitlines()
             if not 1 <= len(emojis) <= 2:
-                raise MeowError("Enter one card emoji and optionally one role emoji on the next line.")
+                raise MeowError("Use the first line for the card and the optional second line for the role.")
+            if self.medal:
+                card_emojis = EMOJI_OR_ALIAS.sub(lambda match: resolve_emoji_alias(interaction.guild, match[0]), emojis[0])
+            else:
+                card_emojis = resolve_emoji(interaction.guild, emojis[0])
             previous_key = {"key": self.reward.key} if self.reward else {}
-            reward = Reward(
+            reward_type = Medal if self.medal else Reward
+            reward = reward_type(
                 name=self.name.value,
-                emoji=resolve_emoji(interaction.guild, emojis[0]),
+                emoji=card_emojis,
                 role_emoji=emojis[1].strip() if len(emojis) > 1 else None,
                 points=int(points),
                 description=self.description.value,
