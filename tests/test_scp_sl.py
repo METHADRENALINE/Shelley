@@ -41,11 +41,27 @@ def snapshot(**changes):
             {"id": "plain", "name_ru": "\u0412\u0430\u043d\u0438\u043b\u044c (\u043f\u043e\u0447\u0442\u0438)"},
             {"id": "perks", "name_ru": "\u041f\u0435\u0440\u043a\u0438"},
             {"id": "paravoz", "name_ru": "\u041f\u0430\u0440\u0430\u0432\u043e\u0437"},
+            {"id": "blackout", "name_ru": "Блэкаут"},
         ],
         "poll": {"id": POLL_ID, "deadline": now + timedelta(seconds=30), "open": True},
     }
     values.update(changes)
     return Snapshot.model_validate(values)
+
+
+def test_escort_button_tracks_three_player_threshold():
+    modes = snapshot().available_modes
+    modes = [mode.model_dump() for mode in modes] + [{"id": "escort", "name_ru": "Конвоир"}]
+    with pytest.raises(ValidationError):
+        snapshot(available_modes=modes)
+    lobby = snapshot(online_names=["A", "B", "C"], available_modes=modes)
+
+    async def build_buttons():
+        return ModeView(Mock(), lobby).children
+
+    buttons = asyncio.run(build_buttons())
+    assert [button.mode for button in buttons] == ["plain", "perks", "paravoz", "blackout", "escort"]
+    assert buttons[-1].label == "Конвоир"
 
 
 def cog(monkeypatch):
@@ -259,7 +275,12 @@ def test_renderer_offline_and_empty_have_no_mode_or_voting_label():
     )
     for value in [None, empty]:
         text = render_status(config(), value)[0].description
-        assert "0 \u0443\u0447\u0430\u0441\u0442\u043d\u0438\u043a\u043e\u0432" in text
+        if value is None:
+            assert "\u041e\u043d\u043b\u0430\u0439\u043d" not in text
+            assert "0 \u0443\u0447\u0430\u0441\u0442\u043d\u0438\u043a\u043e\u0432" not in text
+        else:
+            assert "\u041e\u043d\u043b\u0430\u0439\u043d" in text
+            assert "0 \u0443\u0447\u0430\u0441\u0442\u043d\u0438\u043a\u043e\u0432" in text
         assert "\u0420\u0435\u0436\u0438\u043c" not in text
         assert "hidden" not in text
         assert "\u0413\u043e\u043b\u043e\u0441\u043e\u0432\u0430\u043d\u0438\u0435 \u0437\u0430" not in text
@@ -398,7 +419,7 @@ def test_publish_deduplicates_then_hides_modes_when_api_fails(monkeypatch):
         assert value.message.edit.await_count == 2
         args = value.message.edit.await_args.kwargs
         assert args["view"] is None
-        assert ":red_circle:" in args["embeds"][-1].description
+        assert ":yellow_circle:" in args["embeds"][-1].description
         assert "\u0420\u0435\u0436\u0438\u043c" not in args["embeds"][-1].description
         await value.publish_once()
         assert value.message.edit.await_count == 2
@@ -536,7 +557,7 @@ def test_losing_second_player_removes_voting_until_two_return(monkeypatch):
 
     async def run():
         await value.publish_once()
-        assert len(value._view.children) == 3
+        assert len(value._view.children) == 4
         value.cache.update(
             snapshot(
                 online_names=["one"],
@@ -553,7 +574,7 @@ def test_losing_second_player_removes_voting_until_two_return(monkeypatch):
         )
         value.cache.update(snapshot(poll={"id": BOOT_ID, "deadline": datetime.now(UTC) + timedelta(seconds=30), "open": True}))
         await value.publish_once()
-        assert len(value._view.children) == 3
+        assert len(value._view.children) == 4
         value._view.stop()
 
     asyncio.run(run())
@@ -747,3 +768,43 @@ def test_unload_cancels_poll_and_publish_and_closes_owned_session(monkeypatch):
         assert not value._tasks
 
     asyncio.run(run())
+
+
+def test_reconnect_indicator_does_not_show_stale_votes_and_eventually_goes_offline():
+    wall = datetime.now(UTC)
+    cache = SnapshotCache()
+    assert cache.indicator(now=100, wall=wall) == ":red_circle:"
+    cache.update(snapshot(heartbeat_at=wall), now=100)
+    assert cache.indicator(now=100, wall=wall) == ":green_circle:"
+    cache.fail()
+    assert cache.current(now=101, wall=wall) is None
+    assert cache.indicator(now=101, wall=wall) == ":yellow_circle:"
+    assert cache.indicator(now=146, wall=wall) == ":red_circle:"
+    cache.update(snapshot(boot_id=POLL_ID, heartbeat_at=wall), now=147)
+    assert cache.indicator(now=147, wall=wall) == ":green_circle:"
+
+
+def test_announced_restart_is_yellow_and_never_has_vote_buttons():
+    wall = datetime.now(UTC)
+    value = snapshot(phase="restarting", poll={"id": None, "deadline": None, "open": False}, heartbeat_at=wall)
+    cache = SnapshotCache()
+    cache.update(value, now=100)
+    assert cache.indicator(now=100, wall=wall) == ":yellow_circle:"
+    cache.fail()
+    assert cache.indicator(now=180, wall=wall) == ":yellow_circle:"
+    assert cache.indicator(now=191, wall=wall) == ":red_circle:"
+    assert not value.voting(wall)
+    text = render_status(config(), value, wall)[-1].description
+    assert ":yellow_circle:" in text
+    assert ":red_circle:" not in text
+
+
+def test_frozen_heartbeat_cannot_extend_reconnect_grace_forever():
+    wall = datetime.now(UTC)
+    cache = SnapshotCache()
+    value = snapshot(heartbeat_at=wall)
+    cache.update(value, now=100)
+    for second in range(101, 151):
+        cache.update(value, now=second)
+    assert cache.current(now=151, wall=wall) is None
+    assert cache.indicator(now=151, wall=wall) == ":red_circle:"

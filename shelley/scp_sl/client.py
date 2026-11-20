@@ -80,6 +80,7 @@ class SnapshotCache:
         self._sequence_at = 0.0
         self._received_at = 0.0
         self._available = False
+        self._reconnect_until = 0.0
 
     def update(self, snapshot: Snapshot, now: float | None = None) -> None:
         now = time.monotonic() if now is None else now
@@ -93,6 +94,10 @@ class SnapshotCache:
         self.snapshot = snapshot
         self._received_at = now
         self._available = True
+        if self.current(now=now) is not None and (
+            previous is None or (previous.boot_id, previous.heartbeat_sequence) != (snapshot.boot_id, snapshot.heartbeat_sequence)
+        ):
+            self._reconnect_until = now + (90 if snapshot.phase == "restarting" else 45)
 
     def fail(self) -> None:
         self._available = False
@@ -109,3 +114,10 @@ class SnapshotCache:
         if now - self._received_at >= self.stale_seconds or now - self._sequence_at >= self.stale_seconds:
             return None
         return snapshot
+
+    def indicator(self, now: float | None = None, wall: datetime | None = None) -> str:
+        now = time.monotonic() if now is None else now
+        current = self.current(now=now, wall=wall)
+        if current is not None:
+            return ":yellow_circle:" if current.phase == "restarting" else ":green_circle:"
+        return ":yellow_circle:" if now < self._reconnect_until else ":red_circle:"

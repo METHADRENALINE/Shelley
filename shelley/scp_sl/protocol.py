@@ -5,7 +5,7 @@ from typing import Annotated, Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator
 
-ModeId = Literal["plain", "perks", "paravoz"]
+ModeId = Literal["plain", "perks", "paravoz", "blackout", "escort"]
 SessionId = Annotated[
     str,
     Field(pattern=r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"),
@@ -48,10 +48,10 @@ class Snapshot(ProtocolModel):
     heartbeat_sequence: int = Field(ge=0, le=2**63 - 1)
     heartbeat_at: AwareDatetime
     online_names: list[PlayerName] = Field(max_length=128)
-    phase: Literal["empty", "voting", "countdown", "round", "ended"]
+    phase: Literal["empty", "voting", "countdown", "round", "ended", "restarting"]
     mode: ModeId | None
     mode_name_ru: ModeName | None
-    available_modes: list[Mode] = Field(max_length=3)
+    available_modes: list[Mode] = Field(max_length=5)
     poll: Poll
 
     @field_validator("online_names")
@@ -77,6 +77,8 @@ class Snapshot(ProtocolModel):
             raise ValueError("an open poll requires at least two players, modes and the voting phase")
         if "paravoz" in ids and len(self.online_names) < 2:
             raise ValueError("paravoz requires at least two players")
+        if "escort" in ids and len(self.online_names) < 3:
+            raise ValueError("escort requires at least three players")
         return self
 
     def voting(self, now: datetime) -> bool:

@@ -148,7 +148,7 @@ class ScpSlCog(commands.Cog):
             self._signature = None
         now = datetime.now(UTC)
         snapshot = self.cache.current(wall=now)
-        embeds = render_status(self.config, snapshot, now)
+        embeds = render_status(self.config, snapshot, now, status=self.cache.indicator(wall=now))
         view = ModeView(self, snapshot) if snapshot is not None and snapshot.voting(now) else None
         signature = payload_signature(embeds, view, self.config.separator_content)
         if self.message is not None and self._signature == signature:
