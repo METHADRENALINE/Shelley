@@ -25,7 +25,7 @@ def render_status(
         names = snapshot.online_names
         description += status_online_block(len(names), "\u041e\u043d\u043b\u0430\u0439\u043d", True, names)
     if snapshot is not None and snapshot.online_names:
-        if snapshot.voting(now):
+        if snapshot.voting(now) and snapshot.poll.kind == "mode":
             mode = "*\u0412\u0435\u0434\u0451\u0442\u0441\u044f \u0433\u043e\u043b\u043e\u0441\u043e\u0432\u0430\u043d\u0438\u0435*"
         else:
             mode = escape(snapshot.mode_name_ru) if snapshot.mode_name_ru is not None else ""
@@ -40,9 +40,8 @@ def render_status(
     )
     description += f"### **\u0421\u0442\u0430\u0442\u0443\u0441** {status}\n"
     if snapshot is not None and snapshot.voting(now):
-        description += (
-            "\u2800\n### **\u0413\u043e\u043b\u043e\u0441\u043e\u0432\u0430\u043d\u0438\u0435 \u0437\u0430 \u0440\u0435\u0436\u0438\u043c**"
-        )
+        title = "Голосование за перки" if snapshot.poll.kind == "perks" else "Голосование за режим"
+        description += f"\u2800\n### **{title}**"
     embeds.append(discord.Embed(color=config.color, description=description))
     return embeds
 

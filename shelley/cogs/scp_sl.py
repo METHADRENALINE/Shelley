@@ -12,7 +12,7 @@ from discord.ext import commands
 
 from ..discord_helpers import edit_status_message
 from ..scp_sl.client import ScpSlApiError, ScpSlClient, SnapshotCache
-from ..scp_sl.protocol import ModeId, Snapshot, Vote
+from ..scp_sl.protocol import ChoiceId, Snapshot, Vote
 from ..scp_sl.renderer import payload_signature, render_status
 from ..settings import get_config
 from ..state import get_status_message_id, set_status_message_id
@@ -25,7 +25,7 @@ STATUS_KEY = "scpsl"
 
 
 class ModeButton(discord.ui.Button):
-    def __init__(self, cog: ScpSlCog, snapshot: Snapshot, mode: ModeId, label: str) -> None:
+    def __init__(self, cog: ScpSlCog, snapshot: Snapshot, mode: ChoiceId, label: str) -> None:
         super().__init__(
             style=discord.ButtonStyle.secondary,
             label=label,
@@ -215,7 +215,7 @@ class ScpSlCog(commands.Cog):
         except discord.HTTPException:
             pass
 
-    async def handle_vote(self, interaction: discord.Interaction, boot_id: str, poll_id: str | None, mode: ModeId) -> None:
+    async def handle_vote(self, interaction: discord.Interaction, boot_id: str, poll_id: str | None, mode: ChoiceId) -> None:
         try:
             await interaction.response.defer(ephemeral=True, thinking=True)
         except discord.HTTPException:
