@@ -39,7 +39,6 @@ def snapshot(**changes):
         "mode_name_ru": None,
         "available_modes": [
             {"id": "plain", "name_ru": "\u0412\u0430\u043d\u0438\u043b\u044c (\u043f\u043e\u0447\u0442\u0438)"},
-            {"id": "perks", "name_ru": "\u041f\u0435\u0440\u043a\u0438"},
             {"id": "paravoz", "name_ru": "\u041f\u0430\u0440\u0430\u0432\u043e\u0437"},
             {"id": "blackout", "name_ru": "Блэкаут"},
         ],
@@ -60,8 +59,30 @@ def test_escort_button_tracks_three_player_threshold():
         return ModeView(Mock(), lobby).children
 
     buttons = asyncio.run(build_buttons())
-    assert [button.mode for button in buttons] == ["plain", "perks", "paravoz", "blackout", "escort"]
+    assert [button.mode for button in buttons] == ["plain", "paravoz", "blackout", "escort"]
     assert buttons[-1].label == "Конвоир"
+
+
+def test_perk_ballot_shows_selected_mode_and_only_perk_buttons():
+    first = snapshot()
+    second = snapshot(
+        mode="blackout",
+        mode_name_ru="Блэкаут",
+        poll={**first.poll.model_dump(), "id": "33333333-3333-3333-3333-333333333333", "kind": "perks"},
+        available_modes=[{"id": "perks_on", "name_ru": "С перками"}, {"id": "perks_off", "name_ru": "Без перков"}],
+    )
+    text = render_status(config(), second)[-1].description
+    assert "Блэкаут" in text and "Голосование за перки" in text
+
+    async def buttons():
+        return ModeView(Mock(), second).children
+
+    controls = asyncio.run(buttons())
+    assert [button.label for button in controls] == ["С перками", "Без перков"]
+    assert all(second.poll.id in button.custom_id for button in controls)
+    for forbidden in ("paravoz", "escort"):
+        with pytest.raises(ValidationError):
+            snapshot(**{**second.model_dump(), "mode": forbidden})
 
 
 def cog(monkeypatch):
@@ -373,6 +394,32 @@ def test_callback_security_never_forwards_invalid_votes(monkeypatch, invalid):
     event.delete_original_response.assert_awaited_once()
 
 
+def test_same_member_votes_in_both_stages_but_stale_button_is_ignored(monkeypatch):
+    value = cog(monkeypatch)
+    old = snapshot()
+    new_poll = "33333333-3333-3333-3333-333333333333"
+    second = snapshot(
+        heartbeat_sequence=2,
+        mode="plain",
+        mode_name_ru="Ваниль",
+        poll={**old.poll.model_dump(), "id": new_poll, "kind": "perks"},
+        available_modes=[{"id": "perks_on", "name_ru": "С перками"}, {"id": "perks_off", "name_ru": "Без перков"}],
+    )
+    value.client.vote.return_value = VoteResult(result="accepted")
+
+    async def run():
+        await value.handle_vote(interaction(), BOOT_ID, POLL_ID, "plain")
+        value.cache.update(second)
+        await value.handle_vote(interaction(), BOOT_ID, POLL_ID, "plain")
+        await value.handle_vote(interaction(), BOOT_ID, new_poll, "perks_on")
+
+    asyncio.run(run())
+    assert [(call.args[0].poll_id, call.args[0].mode) for call in value.client.vote.await_args_list] == [
+        (POLL_ID, "plain"),
+        (new_poll, "perks_on"),
+    ]
+
+
 def test_votes_are_authoritative_accepted_private_and_duplicate_silent(monkeypatch):
     value = cog(monkeypatch)
     value.client.vote.side_effect = [VoteResult(result="accepted"), VoteResult(result="duplicate")]
@@ -380,7 +427,7 @@ def test_votes_are_authoritative_accepted_private_and_duplicate_silent(monkeypat
 
     async def run():
         await value.handle_vote(first, BOOT_ID, POLL_ID, "plain")
-        await value.handle_vote(second, BOOT_ID, POLL_ID, "perks")
+        await value.handle_vote(second, BOOT_ID, POLL_ID, "blackout")
 
     asyncio.run(run())
     assert value.client.vote.await_count == 2
@@ -557,7 +604,7 @@ def test_losing_second_player_removes_voting_until_two_return(monkeypatch):
 
     async def run():
         await value.publish_once()
-        assert len(value._view.children) == 4
+        assert len(value._view.children) == 3
         value.cache.update(
             snapshot(
                 online_names=["one"],
@@ -574,7 +621,7 @@ def test_losing_second_player_removes_voting_until_two_return(monkeypatch):
         )
         value.cache.update(snapshot(poll={"id": BOOT_ID, "deadline": datetime.now(UTC) + timedelta(seconds=30), "open": True}))
         await value.publish_once()
-        assert len(value._view.children) == 4
+        assert len(value._view.children) == 3
         value._view.stop()
 
     asyncio.run(run())
@@ -672,7 +719,7 @@ def test_wire_protocol_endpoints_and_503_snapshot_rejection(monkeypatch):
             try:
                 assert await client.snapshot() == state
                 await value.handle_vote(interaction(), BOOT_ID, POLL_ID, "plain")
-                await value.handle_vote(interaction(), BOOT_ID, POLL_ID, "perks")
+                await value.handle_vote(interaction(), BOOT_ID, POLL_ID, "blackout")
                 with pytest.raises(ScpSlApiError):
                     await client.request("GET", "/stale", Snapshot)
             finally:
@@ -683,7 +730,7 @@ def test_wire_protocol_endpoints_and_503_snapshot_rejection(monkeypatch):
     assert all(request[2] == "Bearer " + TOKEN for request in requests)
     assert votes == [
         {"boot_id": BOOT_ID, "poll_id": POLL_ID, "discord_user_id": "123", "mode": "plain"},
-        {"boot_id": BOOT_ID, "poll_id": POLL_ID, "discord_user_id": "123", "mode": "perks"},
+        {"boot_id": BOOT_ID, "poll_id": POLL_ID, "discord_user_id": "123", "mode": "blackout"},
     ]
 
 

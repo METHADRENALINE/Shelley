@@ -6,6 +6,7 @@ from typing import Annotated, Literal
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 ModeId = Literal["plain", "perks", "paravoz", "blackout", "escort"]
+ChoiceId = Literal[ModeId, "perks_on", "perks_off"]
 SessionId = Annotated[
     str,
     Field(pattern=r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"),
@@ -19,7 +20,7 @@ class ProtocolModel(BaseModel):
 
 
 class Mode(ProtocolModel):
-    id: ModeId
+    id: ChoiceId
     name_ru: ModeName
 
     @field_validator("name_ru")
@@ -31,6 +32,7 @@ class Mode(ProtocolModel):
 
 
 class Poll(ProtocolModel):
+    kind: Literal["mode", "perks"] = "mode"
     id: SessionId | None
     deadline: AwareDatetime | None
     open: bool
@@ -75,6 +77,11 @@ class Snapshot(ProtocolModel):
             raise ValueError("selected mode requires its localized name")
         if self.poll.open and (len(self.online_names) < 2 or not ids or self.phase != "voting"):
             raise ValueError("an open poll requires at least two players, modes and the voting phase")
+        if self.poll.kind == "perks":
+            if self.mode not in ("plain", "blackout") or set(ids) != {"perks_on", "perks_off"} or not self.poll.open:
+                raise ValueError("a perk ballot requires a compatible mode and both choices")
+        elif "perks_on" in ids or "perks_off" in ids:
+            raise ValueError("perk choices require a perk ballot")
         if "paravoz" in ids and len(self.online_names) < 2:
             raise ValueError("paravoz requires at least two players")
         if "escort" in ids and len(self.online_names) < 3:
@@ -89,7 +96,7 @@ class Vote(ProtocolModel):
     boot_id: SessionId
     poll_id: SessionId
     discord_user_id: str = Field(pattern=r"^[1-9][0-9]{0,19}$")
-    mode: ModeId
+    mode: ChoiceId
 
     @field_validator("discord_user_id")
     @classmethod
